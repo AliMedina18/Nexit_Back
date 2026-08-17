@@ -1,4 +1,5 @@
 using FluentValidation;
+using AutoMapper;
 using Microsoft.Extensions.DependencyInjection;
 using Nexit.Application.UseCases.Clientes;
 using Nexit.Application.UseCases.Catalogos;
@@ -13,6 +14,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddValidatorsFromAssemblyContaining(typeof(DependencyInjection));
+        services.AddAutoMapper(typeof(DependencyInjection).Assembly);
         services.AddScoped<ICrearClienteUseCase, CrearClienteUseCase>();
         services.AddScoped<IActualizarClienteUseCase, ActualizarClienteUseCase>();
         services.AddScoped<IConsultarClientesUseCase, ConsultarClientesUseCase>();

@@ -10,11 +10,14 @@ using Nexit.Application.DTOs.Proyectos;
 using Nexit.Application.UseCases.Proyectos;
 using Nexit.Application.DTOs.Informes;
 using Nexit.Application.UseCases.Informes;
+using Nexit.API.Middleware;
+using Microsoft.AspNetCore.Http;
 using Nexit.Application.Validators.Proveedores;
 using Nexit.Application.Validators.Clientes;
 using Nexit.Core.Entities;
 using Nexit.Core.Exceptions;
 using Nexit.Core.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace Nexit.Tests;
 
@@ -220,5 +223,41 @@ public class InformesTests
     {
         await Assert.ThrowsAsync<BusinessRuleException>(() => new GenerarInformeSnapshotUseCase(Mock.Of<IInformesRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearInformeSnapshotDto { Tipo = "diario", PeriodoKey = "2026-08-17" }, Guid.NewGuid()));
+    }
+}
+
+public class SecurityMiddlewareTests
+{
+    [Fact]
+    public async Task SecurityHeaders_adds_protective_headers_to_every_response()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var middleware = new SecurityHeadersMiddleware(async current => await current.Response.WriteAsync("ok"));
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal("nosniff", context.Response.Headers["X-Content-Type-Options"].ToString());
+        Assert.Equal("DENY", context.Response.Headers["X-Frame-Options"].ToString());
+        Assert.Equal("no-referrer", context.Response.Headers["Referrer-Policy"].ToString());
+        Assert.Equal("no-store", context.Response.Headers["Cache-Control"].ToString());
+    }
+
+    [Fact]
+    public async Task GlobalExceptionHandler_hides_unexpected_exception_details()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var logger = Mock.Of<ILogger<GlobalExceptionHandlerMiddleware>>();
+        var middleware = new GlobalExceptionHandlerMiddleware(_ => throw new InvalidOperationException("secret internal detail"), logger);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        context.Response.Body.Position = 0;
+        using var reader = new StreamReader(context.Response.Body);
+        var body = await reader.ReadToEndAsync();
+        Assert.DoesNotContain("secret internal detail", body);
+        Assert.Contains("Ocurrió un error interno", body);
     }
 }

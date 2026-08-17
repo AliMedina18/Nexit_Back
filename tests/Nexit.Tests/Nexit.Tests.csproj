@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\src\Nexit.Core\Nexit.Core.csproj" />
     <ProjectReference Include="..\..\src\Nexit.Application\Nexit.Application.csproj" />
     <ProjectReference Include="..\..\src\Nexit.Infrastructure\Nexit.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Nexit.API\Nexit.API.csproj" />
   </ItemGroup>
 
 </Project>
