@@ -1,0 +1,6 @@
+@Nexit.API_HostAddress = http://localhost:5031
+
+GET {{Nexit.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,0 +1,25 @@
+using Nexit.Core.Entities;
+
+namespace Nexit.Core.Interfaces;
+
+public interface ICatalogosRepository
+{
+    Task<IReadOnlyList<Pais>> GetPaisesAsync(CancellationToken cancellationToken = default);
+    Task<Pais?> GetPaisAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Region>> GetRegionesAsync(Guid paisId, CancellationToken cancellationToken = default);
+    Task<Region?> GetRegionAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Ciudad>> GetCiudadesAsync(Guid regionId, CancellationToken cancellationToken = default);
+    Task<Ciudad?> GetCiudadAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CategoriaProveedor>> GetCategoriasAsync(CancellationToken cancellationToken = default);
+    Task<CategoriaProveedor?> GetCategoriaAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Servicio>> GetServiciosAsync(CancellationToken cancellationToken = default);
+    Task<Servicio?> GetServicioAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<FaseProyecto>> GetFasesAsync(CancellationToken cancellationToken = default);
+    Task<FaseProyecto?> GetFaseAsync(short fase, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EstadoProyecto>> GetEstadosAsync(short? fase, CancellationToken cancellationToken = default);
+    Task<EstadoProyecto?> GetEstadoAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<bool> NombreExisteAsync<T>(string nombre, Guid? excludeId = null, CancellationToken cancellationToken = default) where T : class;
+    Task AddAsync<T>(T entity, CancellationToken cancellationToken = default) where T : class;
+    void Update<T>(T entity) where T : class;
+    Task DeleteAsync<T>(T entity, CancellationToken cancellationToken = default) where T : class;
+}
