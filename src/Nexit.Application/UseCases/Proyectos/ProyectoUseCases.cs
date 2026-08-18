@@ -69,7 +69,10 @@ internal static class ProyectoMapper
     public static void Apply(CrearProyectoDto dto, Proyecto entity)
     {
         entity.Nombre = dto.Nombre; entity.ClienteId = dto.ClienteId; entity.ContactoProyecto = dto.ContactoProyecto; entity.TipoProyecto = dto.TipoProyecto; entity.Prioridad = dto.Prioridad; entity.Ciudad = dto.Ciudad; entity.SedeNext = dto.SedeNext; entity.FechaSolicitud = dto.FechaSolicitud; entity.FechaEvento = dto.FechaEvento; entity.EstadoId = dto.EstadoId; entity.PorcentajeAvance = dto.PorcentajeAvance; entity.EstadoBrief = dto.EstadoBrief; entity.PropuestaEstado = dto.PropuestaEstado; entity.NumeroFactura = dto.NumeroFactura; entity.Pagado = dto.Pagado; entity.FechaPago = dto.FechaPago; entity.Notas = dto.Notas; entity.GerenteId = dto.GerenteId;
-        entity.Equipo.Clear(); foreach (var miembro in dto.Equipo) entity.Equipo.Add(new ProyectoEquipo { Id = miembro.Id ?? Guid.NewGuid(), ProyectoId = entity.Id, Rol = miembro.Rol, Nombre = miembro.Nombre });
+        // Guid.Empty (no Guid.NewGuid()) para los miembros de equipo nuevos -- ver el comentario detallado
+        // en ActualizarClienteUseCase (ClienteUseCases.cs) sobre por qué un Id ya asignado hace que EF Core
+        // confunda un ProyectoEquipo nuevo con uno existente cuando el proyecto padre ya está rastreado.
+        entity.Equipo.Clear(); foreach (var miembro in dto.Equipo) entity.Equipo.Add(new ProyectoEquipo { Id = miembro.Id ?? Guid.Empty, ProyectoId = entity.Id, Rol = miembro.Rol, Nombre = miembro.Nombre });
         entity.Proveedores.Clear(); foreach (var proveedorId in dto.ProveedorIds.Distinct()) entity.Proveedores.Add(new ProyectoProveedor { ProyectoId = entity.Id, ProveedorId = proveedorId });
     }
     public static ProyectoResponseDto ToResponse(Proyecto entity) => new()

@@ -7,26 +7,37 @@ using Microsoft.Extensions.Options;
 namespace Nexit.Tests.Integration;
 
 /// <summary>
-/// Reemplaza la autenticación JWT real de Supabase en las pruebas de integración (H8).
-/// No hay forma de generar tokens JWT firmados por un proyecto de Supabase real en un
-/// entorno de pruebas, así que este handler simula el resultado de esa validación a partir
-/// de una cabecera de prueba (<see cref="TestAuthHeader"/>): "X-Test-Role: admin", "miembro",
-/// "manager", o la cabecera ausente para simular una petición sin token.
+/// Reemplaza la autenticación JWT real de Supabase en las pruebas de integración/funcionales (H8,
+/// ver docs/08-tipos-de-pruebas.md). No hay forma de generar tokens JWT firmados por un proyecto de
+/// Supabase real en un entorno de pruebas, así que este handler simula el resultado de esa
+/// validación a partir de dos cabeceras de prueba:
+/// - <see cref="TestAuthHeader"/> ("X-Test-Role"): "super_admin"/"admin"/"manager"/"miembro", o
+///   ausente para simular una petición sin token.
+/// - <see cref="TestUserIdHeader"/> ("X-Test-UserId", opcional): fija el id de usuario autenticado
+///   (el claim que lee BaseController.GetUserId()). Sin esta cabecera, cada petición recibe un id
+///   aleatorio nuevo -- suficiente para pruebas de autorización que no dependen de una identidad
+///   concreta, pero insuficiente para pruebas funcionales que necesitan actuar varias veces COMO EL
+///   MISMO usuario (ej. un gerente que crea un proyecto y luego aprueba una solicitud sobre ese mismo
+///   proyecto, o las protecciones de auto-bloqueo de usuarios).
 /// </summary>
 public class TestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "TestScheme";
     public const string TestAuthHeader = "X-Test-Role";
+    public const string TestUserIdHeader = "X-Test-UserId";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Headers.TryGetValue(TestAuthHeader, out var role) || string.IsNullOrWhiteSpace(role))
             return Task.FromResult(AuthenticateResult.NoResult());
 
+        var userId = Request.Headers.TryGetValue(TestUserIdHeader, out var userIdHeader) && Guid.TryParse(userIdHeader, out var parsed)
+            ? parsed
+            : Guid.NewGuid();
         var claims = new List<Claim>
         {
-            new(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
+            new(ClaimTypes.NameIdentifier, userId.ToString()),
             new("user_role", role.ToString())
         };
         var identity = new ClaimsIdentity(claims, SchemeName);

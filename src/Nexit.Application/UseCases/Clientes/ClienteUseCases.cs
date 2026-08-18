@@ -32,12 +32,26 @@ public class ActualizarClienteUseCase(IClienteRepository repository, IUnitOfWork
         {
             cliente.Telefonos.Add(new ClienteTelefono
             {
-                Id = phone.Id ?? Guid.NewGuid(), ClienteId = cliente.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta
+                // Guid.Empty (no Guid.NewGuid()) a propósito para los teléfonos nuevos: "cliente" ya está
+                // rastreado por el DbContext (viene de GetByIdAsync arriba), así que estos ClienteTelefono
+                // solo se descubren por fixup de navegación, no por un Add() explícito. EF Core solo puede
+                // distinguir "entidad nueva" de "entidad existente" para una clave generada por la base
+                // (Id tiene HasDefaultValueSql("gen_random_uuid()")) cuando el valor de esa clave es el
+                // default de CLR -- con cualquier otro valor asume que ya existe y genera un UPDATE en vez
+                // de un INSERT, que falla porque esa fila no existe todavía (ver docs/08-tipos-de-pruebas.md).
+                Id = phone.Id ?? Guid.Empty, ClienteId = cliente.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta
             });
         }
         cliente.UpdatedAt = DateTime.UtcNow;
         cliente.UpdatedBy = usuarioId;
-        repository.Update(cliente);
+        // OJO: NO llamar repository.Update(cliente) aquí -- "cliente" ya está siendo rastreado por el
+        // DbContext (se obtuvo con GetByIdAsync en este mismo scope), así que la llamada es redundante Y,
+        // peor, DbSet.Update() recorre TODO el grafo y marca como Modified cualquier entidad hija con un Id
+        // ya asignado (no default) que encuentre -- incluyendo los ClienteTelefono nuevos de arriba, a los
+        // que aquí se les asigna un Guid explícito. El resultado es que EF genera un UPDATE en vez de un
+        // INSERT para esos teléfonos nuevos, que falla con DbUpdateConcurrencyException (0 filas afectadas,
+        // porque esa fila todavía no existe) -- un bug real que solo aparece contra Postgres de verdad, no
+        // con los repositorios mockeados de las pruebas unitarias (ver docs/08-tipos-de-pruebas.md).
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return ClienteMapper.ToResponse(cliente);
     }

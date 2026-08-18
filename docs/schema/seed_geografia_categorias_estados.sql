@@ -603,13 +603,15 @@ INSERT INTO estados_proyecto (nombre, fase, orden) VALUES
   ('Ejecutado, pendiente facturar', 3, 8),
   ('Facturado', 3, 9);
 
--- ---------- DOMINIOS DE CORREO PERMITIDOS (octava revisión) ----------
--- 'nextexperiencial.com' es el dominio que usa el propio prototipo
--- HTML como placeholder del campo de login ("nombre@nextexperiencial.com"),
--- así que se toma como el dominio real confirmado. En los Excel
--- también aparece 'nextcolombia.com' en un correo de contacto, pero
--- no hay evidencia de que sea un dominio de LOGIN del sistema (podría
--- ser solo un correo comercial de cara al cliente) -- queda pendiente
--- confirmarlo con Luisa/el equipo antes de habilitarlo aquí.
+-- ---------- DOMINIOS DE CORREO PERMITIDOS (octava revisión; ampliado 2026-08-18) ----------
+-- 'agencianextmkt.com' es el dominio CONFIRMADO de verdad: la usuaria lo dio con el correo
+-- real de una compañera que ya trabaja ahí (yuliana.navarro@agencianextmkt.com), no un placeholder.
+-- 'nextexperiencial.com' es el dominio que usaba el prototipo HTML como placeholder del campo de
+-- login ("nombre@nextexperiencial.com") -- nunca se confirmó con un correo real, se deja aquí por
+-- si de verdad es un dominio válido adicional (la tabla está pensada para admitir varios), pero
+-- convendría confirmarlo o quitarlo con el equipo. En los Excel también aparece 'nextcolombia.com'
+-- en un correo de contacto, pero no hay evidencia de que sea un dominio de LOGIN del sistema (podría
+-- ser solo un correo comercial de cara al cliente) -- sigue pendiente de confirmar antes de habilitarlo.
 INSERT INTO dominios_correo_permitidos (dominio) VALUES
+  ('agencianextmkt.com'),
   ('nextexperiencial.com');

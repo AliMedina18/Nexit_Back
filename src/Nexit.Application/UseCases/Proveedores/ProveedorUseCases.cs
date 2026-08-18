@@ -21,7 +21,11 @@ public class ActualizarProveedorUseCase(IProveedorRepository repository, ICatalo
     {
         var proveedor = await repository.GetByIdAsync(input.Id, ct) ?? throw new EntityNotFoundException("Proveedor", input.Id);
         await ProveedorRules.ValidarCatalogos(input, catalogos, ct); ProveedorMapper.Apply(input, proveedor); proveedor.UpdatedAt = DateTime.UtcNow; proveedor.UpdatedBy = usuarioId;
-        repository.Update(proveedor); await unitOfWork.SaveChangesAsync(ct); return ProveedorMapper.ToResponse(proveedor);
+        // No repository.Update(proveedor) -- ya está rastreado (se obtuvo con GetByIdAsync en este mismo
+        // scope); llamar DbSet.Update() aquí marcaría como Modified (en vez de Added) los ProveedorTelefono
+        // y ProveedorServicio nuevos que ProveedorMapper.Apply acaba de agregar con un Id ya asignado,
+        // rompiendo el guardado contra Postgres real -- mismo bug que en ActualizarClienteUseCase, ver ahí.
+        await unitOfWork.SaveChangesAsync(ct); return ProveedorMapper.ToResponse(proveedor);
     }
 }
 
@@ -46,7 +50,10 @@ internal static class ProveedorMapper
     public static void Apply(CreateProveedorDto dto, Proveedor entity)
     {
         entity.Nombre = dto.Nombre; entity.PaisId = dto.PaisId; entity.RegionId = dto.RegionId; entity.CiudadId = dto.CiudadId; entity.CategoriaId = dto.CategoriaId; entity.Estado = dto.Estado; entity.Contacto = dto.Contacto; entity.CargoContacto = dto.CargoContacto; entity.Email = dto.Email; entity.Web = dto.Web; entity.Direccion = dto.Direccion; entity.Aforo = dto.Aforo; entity.CostoReferencia = dto.CostoReferencia; entity.Score = dto.Score; entity.Presupuesto = dto.Presupuesto; entity.Cobertura = dto.Cobertura; entity.Notas = dto.Notas;
-        entity.Telefonos.Clear(); foreach (var phone in dto.Telefonos) entity.Telefonos.Add(new ProveedorTelefono { Id = phone.Id ?? Guid.NewGuid(), ProveedorId = entity.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta });
+        // Guid.Empty (no Guid.NewGuid()) para los teléfonos nuevos -- ver el comentario detallado en
+        // ActualizarClienteUseCase (ClienteUseCases.cs) sobre por qué un Id ya asignado hace que EF Core
+        // confunda un ProveedorTelefono nuevo con uno existente cuando el proveedor padre ya está rastreado.
+        entity.Telefonos.Clear(); foreach (var phone in dto.Telefonos) entity.Telefonos.Add(new ProveedorTelefono { Id = phone.Id ?? Guid.Empty, ProveedorId = entity.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta });
         entity.Servicios.Clear(); foreach (var servicioId in dto.ServicioIds.Distinct()) entity.Servicios.Add(new ProveedorServicio { ProveedorId = entity.Id, ServicioId = servicioId });
     }
     public static ProveedorResponseDto ToResponse(Proveedor entity) => new()
