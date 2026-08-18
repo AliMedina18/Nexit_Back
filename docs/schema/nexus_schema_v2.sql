@@ -166,7 +166,14 @@ CREATE TYPE area_seguimiento AS ENUM (
 -- en un comentario (nadie los obligaba a nivel de base de
 -- datos) -- se vuelve ENUM para que quede validado de verdad,
 -- igual que el resto de catálogos cerrados del sistema.
-CREATE TYPE rol_usuario AS ENUM ('admin', 'manager', 'miembro');
+-- AMPLIADO (novena revisión, modelo de permisos de 4 niveles --
+-- ver docs/06-modelo-permisos-roles.md): se agrega 'super_admin'
+-- por encima de 'admin'. super_admin es exclusivo de quien
+-- desarrolla/administra el sistema y es el ÚNICO rol que puede
+-- ver o gestionar la tabla usuarios; admin puede administrar todo
+-- lo demás (catálogos, y aprobar/rechazar solicitudes de
+-- eliminación) pero no usuarios.
+CREATE TYPE rol_usuario AS ENUM ('super_admin', 'admin', 'manager', 'miembro');
 
 -- ============================================================
 -- 2. USUARIOS (extiende auth.users de Supabase)
@@ -500,6 +507,7 @@ CREATE TABLE proyectos (
   pagado            boolean NOT NULL DEFAULT false,        -- NUEVO
   fecha_pago        date,                                 -- NUEVO
   notas             text,
+  gerente_id        uuid REFERENCES usuarios(id) ON DELETE SET NULL,  -- NUEVO (novena revisión): gerente/manager dueño del proyecto -- ver docs/06-modelo-permisos-roles.md. Se asigna solo (al gerente que lo crea) o lo asigna un admin/super_admin; solo un admin/super_admin puede reasignarlo después. Un proyecto sin gerente asignado (NULL) no tiene "dueño" -- su eliminación va directo a un administrador.
   created_by        uuid REFERENCES usuarios(id),  -- auditoría: qué usuario registró este proyecto; NO implica que un proyecto sea un usuario
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()
@@ -510,6 +518,7 @@ CREATE INDEX idx_proyectos_estado    ON proyectos(estado_id);
 CREATE INDEX idx_proyectos_brief     ON proyectos(estado_brief);
 CREATE INDEX idx_proyectos_cliente   ON proyectos(cliente_id);  -- NUEVO
 CREATE INDEX idx_proyectos_prioridad ON proyectos(prioridad);   -- NUEVO
+CREATE INDEX idx_proyectos_gerente   ON proyectos(gerente_id);  -- NUEVO (novena revisión)
 
 -- Como estado_id es una FK (no se le puede poner un valor
 -- constante en DEFAULT), este trigger lo completa con el id de
@@ -612,6 +621,45 @@ CREATE TABLE informes_snapshot (
 );
 
 -- ============================================================
+-- 11b. SOLICITUDES DE ELIMINACIÓN (NUEVO, novena revisión)
+--     Modelo de permisos de 4 niveles -- ver docs/06-modelo-permisos-
+--     roles.md. Un gerente o miembro no puede eliminar directamente
+--     un cliente, proveedor o proyecto: en su lugar crea una fila
+--     aquí. Si es un proyecto con gerente_id distinto de quien
+--     solicita, la fila nace en estado 'pendiente_gerente' (debe
+--     endosarla primero el gerente dueño del proyecto); en cualquier
+--     otro caso (clientes, proveedores, proyecto sin gerente, o el
+--     propio gerente pidiendo eliminar su proyecto) nace directo en
+--     'pendiente_admin'. Solo cuando un admin/super_admin aprueba
+--     (estado 'aprobada') el backend ejecuta el DELETE real sobre la
+--     entidad -- esta tabla en sí misma nunca borra nada por sí sola,
+--     es un flujo de aprobación, no una papelera.
+-- ============================================================
+
+CREATE TYPE solicitud_eliminacion_tipo AS ENUM ('cliente', 'proveedor', 'proyecto');
+CREATE TYPE solicitud_eliminacion_estado AS ENUM ('pendiente_gerente', 'pendiente_admin', 'aprobada', 'rechazada');
+
+CREATE TABLE solicitudes_eliminacion (
+  id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo_entidad             solicitud_eliminacion_tipo NOT NULL,
+  entidad_id               uuid NOT NULL,  -- id de clientes/proveedores/proyectos según tipo_entidad -- sin FK propia porque apunta a una de 3 tablas distintas según el tipo
+  solicitado_por_id        uuid NOT NULL REFERENCES usuarios(id),        -- quién pidió la eliminación
+  motivo                   text,
+  estado                   solicitud_eliminacion_estado NOT NULL DEFAULT 'pendiente_admin',
+  gerente_responsable_id   uuid REFERENCES usuarios(id) ON DELETE SET NULL,  -- el gerente dueño del proyecto, cuando aplica (solo tipo_entidad = 'proyecto' con gerente distinto de quien solicita)
+  aprobado_por_gerente_id  uuid REFERENCES usuarios(id) ON DELETE SET NULL,
+  aprobado_por_gerente_en  timestamptz,
+  revisado_por_id          uuid REFERENCES usuarios(id) ON DELETE SET NULL,  -- quién tomó la decisión final (aprobar/rechazar) como admin, o quién rechazó como gerente
+  revisado_en              timestamptz,
+  comentario_revision      text,
+  created_at               timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_solicitudes_tipo_entidad ON solicitudes_eliminacion(tipo_entidad, entidad_id);
+CREATE INDEX idx_solicitudes_estado       ON solicitudes_eliminacion(estado);
+CREATE INDEX idx_solicitudes_gerente      ON solicitudes_eliminacion(gerente_responsable_id);
+
+-- ============================================================
 -- 12. updated_at AUTOMÁTICO
 -- ============================================================
 
@@ -641,13 +689,27 @@ CREATE TRIGGER trg_usuarios_updated_at  -- NUEVO (octava revisión)
 
 -- ============================================================
 -- 13. ROW LEVEL SECURITY
---     Herramienta interna: cualquier usuario autenticado (los
---     ~20 de la agencia) puede leer y escribir todo. Ajustar
---     si más adelante se necesitan roles distintos (ej. que
---     "compras" no pueda eliminar proveedores). Los catálogos
---     también quedan con permiso de escritura para autenticados
---     porque la app necesita poder insertar una fila nueva ahí
---     cuando alguien usa la opción "Otro" en el formulario.
+--     REVISADO en la auditoría de seguridad del 2026-08-17 (hallazgo H4 — ver
+--     docs/05-plan-remediacion-seguridad.md). Diseño anterior: "cualquier autenticado
+--     puede todo" (auth.role() = 'authenticated'). Ese diseño asume que el cliente
+--     (frontend) habla directo con la API de datos de Supabase (PostgREST) usando el
+--     JWT del usuario — pero en Nexit el único que habla con Postgres es el backend de
+--     ASP.NET Core, con una conexión directa (Npgsql), no a través de PostgREST. La
+--     función auth.role() depende de una variable de sesión que solo existe cuando
+--     PostgREST arma la conexión; en una conexión directa no aplica. Además, si en el
+--     futuro el backend se conectara con un rol distinto al superusuario `postgres`
+--     (que ignora RLS) sin ajustar esto, esas políticas habrían bloqueado al propio
+--     backend, no solo a usuarios no autorizados.
+--
+--     Diseño nuevo: RLS aquí es una segunda barrera, no la primera. La autorización
+--     real (quién puede crear/editar/eliminar qué) vive en el backend (políticas
+--     [Authorize] de ASP.NET Core). RLS solo garantiza que, aunque alguien obtenga la
+--     clave pública "anon" de Supabase y la use para llamar a PostgREST directamente
+--     (saltándose el backend por completo), no pueda leer ni escribir nada: con RLS
+--     habilitado y sin ninguna política para los roles `anon`/`authenticated` de
+--     Supabase, Postgres deniega todo por defecto. Solo el rol `nexit_app` (creado en
+--     02_rol_aplicacion_minimo_privilegio.sql, el que usa el backend para conectarse)
+--     tiene política de acceso.
 -- ============================================================
 
 ALTER TABLE usuarios              ENABLE ROW LEVEL SECURITY;
@@ -670,52 +732,40 @@ ALTER TABLE proyecto_equipo       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE proyecto_proveedores  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE proyecto_seguimiento  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE informes_snapshot     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE solicitudes_eliminacion ENABLE ROW LEVEL SECURITY;  -- NUEVO (novena revisión)
 
-CREATE POLICY "autenticados_leen_usuarios" ON usuarios
-  FOR SELECT USING (auth.role() = 'authenticated');
--- (usuarios no tiene política de INSERT/UPDATE/DELETE para
--- autenticados a propósito: crear/editar un usuario -- incluyendo
--- rol y activo -- se hace desde el backend con la service role
--- key, no directo desde la app del usuario. Así nadie puede
--- auto-asignarse el rol 'admin' o reactivarse a sí mismo.)
-CREATE POLICY "autenticados_leen_dominios_correo" ON dominios_correo_permitidos
-  FOR SELECT USING (auth.role() = 'authenticated');  -- NUEVO: solo lectura: se administra desde el backend, no desde la app
-CREATE POLICY "autenticados_todo_paises" ON paises
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_regiones" ON regiones
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_ciudades" ON ciudades
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_categorias" ON categorias_proveedor
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_fases_proyecto" ON fases_proyecto
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_estados_proyecto" ON estados_proyecto
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_servicios" ON servicios
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_clientes" ON clientes
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_cliente_telefonos" ON cliente_telefonos
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_proveedores" ON proveedores
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_proveedor_telefonos" ON proveedor_telefonos
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_proveedor_servicios" ON proveedor_servicios
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_adjuntos" ON proveedor_adjuntos
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_proyectos" ON proyectos
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_equipo" ON proyecto_equipo
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_pp" ON proyecto_proveedores
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_seguimiento" ON proyecto_seguimiento
-  FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "autenticados_todo_snapshots" ON informes_snapshot
-  FOR ALL USING (auth.role() = 'authenticated');
+-- Una sola política por tabla: solo nexit_app pasa. anon/authenticated (PostgREST)
+-- quedan sin ninguna política, así que Postgres les deniega todo por defecto.
+-- El control fino de "quién puede crear/editar/eliminar qué" (super_admin vs. admin
+-- vs. manager vs. miembro, y el flujo de solicitudes de eliminación) lo hace el
+-- backend, no esta capa — ver Nexit.API/Program.cs (políticas "SuperAdminOnly" y
+-- "AdminOrAbove"), docs/06-modelo-permisos-roles.md y los controladores.
+CREATE POLICY "solo_nexit_app" ON usuarios FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON dominios_correo_permitidos FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON paises FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON regiones FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON ciudades FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON categorias_proveedor FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON fases_proyecto FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON estados_proyecto FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON servicios FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON clientes FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON cliente_telefonos FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON proveedores FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON proveedor_telefonos FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON proveedor_servicios FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON proveedor_adjuntos FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON proyectos FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON proyecto_equipo FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON proyecto_proveedores FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON proyecto_seguimiento FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON informes_snapshot FOR ALL TO nexit_app USING (true) WITH CHECK (true);
+CREATE POLICY "solo_nexit_app" ON solicitudes_eliminacion FOR ALL TO nexit_app USING (true) WITH CHECK (true);  -- NUEVO (novena revisión)
+
+-- IMPORTANTE: ejecuta 02_rol_aplicacion_minimo_privilegio.sql (crea el rol nexit_app y
+-- le da GRANT sobre estas tablas) ANTES o DESPUÉS de este archivo, da igual el orden,
+-- pero ambos son necesarios: RLS por sí solo no basta, porque además de la política
+-- hace falta el GRANT a nivel de tabla (RLS filtra FILAS, no reemplaza los permisos).
 
 -- ============================================================
 -- NOTAS DE DISEÑO (v2)
@@ -907,3 +957,28 @@ CREATE POLICY "autenticados_todo_snapshots" ON informes_snapshot
 --    usuario creó o escribió esa fila, para poder responder "¿quién
 --    registró este cliente?" -- no dicen ni implican que un
 --    cliente, proveedor o proyecto sea también un usuario.
+-- 17. Modelo de permisos de 4 niveles (novena revisión) -- ver
+--    docs/06-modelo-permisos-roles.md para el detalle completo y
+--    las decisiones de diseño. Resumen:
+--    - rol_usuario gana 'super_admin' por encima de 'admin':
+--      super_admin (la desarrolladora) es la única que ve/gestiona
+--      la tabla usuarios; admin administra todo lo demás
+--      (catálogos, clientes, proveedores, proyectos) igual que
+--      antes, y además decide las solicitudes de eliminación.
+--    - proyectos.gerente_id: el gerente/manager "dueño" de un
+--      proyecto. Se asigna solo al crear (si el creador ya es
+--      gerente) o lo asigna explícitamente un admin/super_admin;
+--      reasignarlo después también es exclusivo de admin/super_admin.
+--    - solicitudes_eliminacion: gerentes y miembros no pueden
+--      eliminar directamente un cliente, proveedor o proyecto --
+--      piden la eliminación aquí. Si es un proyecto con gerente_id
+--      distinto de quien solicita, primero la debe endosar ese
+--      gerente (pendiente_gerente); de ahí, o directo para
+--      clientes/proveedores/proyectos sin gerente asignado o
+--      solicitados por su propio gerente (pendiente_admin), un
+--      admin/super_admin aprueba o rechaza -- solo al aprobar se
+--      ejecuta el DELETE real.
+--    - admin/super_admin conservan además una vía directa de
+--      eliminación (sin pasar por esta tabla) para catálogos y
+--      adjuntos, que no tienen el concepto de "dueño" ni justifican
+--      el flujo de aprobación.

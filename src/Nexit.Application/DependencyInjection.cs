@@ -6,6 +6,8 @@ using Nexit.Application.UseCases.Catalogos;
 using Nexit.Application.UseCases.Proveedores;
 using Nexit.Application.UseCases.Proyectos;
 using Nexit.Application.UseCases.Informes;
+using Nexit.Application.UseCases.Usuarios;
+using Nexit.Application.UseCases.SolicitudesEliminacion;
 
 namespace Nexit.Application;
 
@@ -32,6 +34,16 @@ public static class DependencyInjection
         services.AddScoped<IAgregarSeguimientoProyectoUseCase, AgregarSeguimientoProyectoUseCase>();
         services.AddScoped<IConsultarInformesUseCase, ConsultarInformesUseCase>();
         services.AddScoped<IGenerarInformeSnapshotUseCase, GenerarInformeSnapshotUseCase>();
+        services.AddScoped<ICrearUsuarioUseCase, CrearUsuarioUseCase>();
+        services.AddScoped<IActualizarUsuarioUseCase, ActualizarUsuarioUseCase>();
+        services.AddScoped<IConsultarUsuariosUseCase, ConsultarUsuariosUseCase>();
+        services.AddScoped<IEliminarUsuarioUseCase, EliminarUsuarioUseCase>();
+        services.AddScoped<ISolicitarEliminacionUseCase, SolicitarEliminacionUseCase>();
+        services.AddScoped<IAprobarComoGerenteUseCase, AprobarComoGerenteUseCase>();
+        services.AddScoped<IRechazarComoGerenteUseCase, RechazarComoGerenteUseCase>();
+        services.AddScoped<IAprobarComoAdminUseCase, AprobarComoAdminUseCase>();
+        services.AddScoped<IRechazarComoAdminUseCase, RechazarComoAdminUseCase>();
+        services.AddScoped<IConsultarSolicitudesEliminacionUseCase, ConsultarSolicitudesEliminacionUseCase>();
         return services;
     }
 }

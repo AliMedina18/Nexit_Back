@@ -17,7 +17,7 @@ namespace Nexit.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.0")
+                .HasAnnotation("ProductVersion", "8.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -128,6 +128,10 @@ namespace Nexit.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
                     b.Property<string>("ValorReferencia")
                         .HasColumnType("text")
                         .HasColumnName("valor_referencia");
@@ -135,6 +139,12 @@ namespace Nexit.Infrastructure.Migrations
                     b.Property<string>("Web")
                         .HasColumnType("text")
                         .HasColumnName("web");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id")
                         .HasName("pk_clientes");
@@ -465,9 +475,19 @@ namespace Nexit.Infrastructure.Migrations
                         .HasColumnName("updated_at")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
                     b.Property<string>("Web")
                         .HasColumnType("text")
                         .HasColumnName("web");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id")
                         .HasName("pk_proveedores");
@@ -665,6 +685,10 @@ namespace Nexit.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("fecha_solicitud");
 
+                    b.Property<Guid?>("GerenteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("gerente_id");
+
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -716,6 +740,16 @@ namespace Nexit.Infrastructure.Migrations
                         .HasColumnName("updated_at")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id")
                         .HasName("pk_proyectos");
 
@@ -733,6 +767,9 @@ namespace Nexit.Infrastructure.Migrations
 
                     b.HasIndex("FechaEvento")
                         .HasDatabaseName("ix_proyectos_fecha_evento");
+
+                    b.HasIndex("GerenteId")
+                        .HasDatabaseName("ix_proyectos_gerente_id");
 
                     b.HasIndex("Prioridad")
                         .HasDatabaseName("ix_proyectos_prioridad");
@@ -925,6 +962,99 @@ namespace Nexit.Infrastructure.Migrations
                     b.ToTable("servicios", (string)null);
                 });
 
+            modelBuilder.Entity("Nexit.Core.Entities.SolicitudEliminacion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime?>("AprobadoPorGerenteEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("aprobado_por_gerente_en");
+
+                    b.Property<Guid?>("AprobadoPorGerenteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("aprobado_por_gerente_id");
+
+                    b.Property<string>("ComentarioRevision")
+                        .HasColumnType("text")
+                        .HasColumnName("comentario_revision");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<Guid>("EntidadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entidad_id");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("pendiente_admin")
+                        .HasColumnName("estado");
+
+                    b.Property<Guid?>("GerenteResponsableId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("gerente_responsable_id");
+
+                    b.Property<string>("Motivo")
+                        .HasColumnType("text")
+                        .HasColumnName("motivo");
+
+                    b.Property<DateTime?>("RevisadoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revisado_en");
+
+                    b.Property<Guid?>("RevisadoPorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revisado_por_id");
+
+                    b.Property<Guid>("SolicitadoPorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("solicitado_por_id");
+
+                    b.Property<string>("TipoEntidad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo_entidad");
+
+                    b.HasKey("Id")
+                        .HasName("pk_solicitudes_eliminacion");
+
+                    b.HasIndex("AprobadoPorGerenteId")
+                        .HasDatabaseName("ix_solicitudes_eliminacion_aprobado_por_gerente_id");
+
+                    b.HasIndex("Estado")
+                        .HasDatabaseName("ix_solicitudes_eliminacion_estado");
+
+                    b.HasIndex("GerenteResponsableId")
+                        .HasDatabaseName("ix_solicitudes_eliminacion_gerente_responsable_id");
+
+                    b.HasIndex("RevisadoPorId")
+                        .HasDatabaseName("ix_solicitudes_eliminacion_revisado_por_id");
+
+                    b.HasIndex("SolicitadoPorId")
+                        .HasDatabaseName("ix_solicitudes_eliminacion_solicitado_por_id");
+
+                    b.HasIndex("TipoEntidad", "EntidadId")
+                        .HasDatabaseName("ix_solicitudes_eliminacion_tipo_entidad_entidad_id");
+
+                    b.ToTable("solicitudes_eliminacion", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_solicitudes_eliminacion_estado", "estado IN ('pendiente_gerente', 'pendiente_admin', 'aprobada', 'rechazada')");
+
+                            t.HasCheckConstraint("ck_solicitudes_eliminacion_tipo", "tipo_entidad IN ('cliente', 'proveedor', 'proyecto')");
+                        });
+                });
+
             modelBuilder.Entity("Nexit.Core.Entities.Usuario", b =>
                 {
                     b.Property<Guid>("Id")
@@ -986,7 +1116,7 @@ namespace Nexit.Infrastructure.Migrations
 
                     b.ToTable("usuarios", null, t =>
                         {
-                            t.HasCheckConstraint("ck_usuarios_rol", "rol IN ('admin', 'manager', 'miembro')");
+                            t.HasCheckConstraint("ck_usuarios_rol", "rol IN ('super_admin', 'admin', 'manager', 'miembro')");
                         });
                 });
 
@@ -1145,7 +1275,15 @@ namespace Nexit.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_proyectos_estados_proyecto_estado_id");
 
+                    b.HasOne("Nexit.Core.Entities.Usuario", "Gerente")
+                        .WithMany()
+                        .HasForeignKey("GerenteId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_proyectos_usuarios_gerente_id");
+
                     b.Navigation("Cliente");
+
+                    b.Navigation("Gerente");
                 });
 
             modelBuilder.Entity("Nexit.Core.Entities.ProyectoEquipo", b =>
@@ -1211,6 +1349,42 @@ namespace Nexit.Infrastructure.Migrations
                         .HasConstraintName("fk_regiones_paises_pais_id");
 
                     b.Navigation("Pais");
+                });
+
+            modelBuilder.Entity("Nexit.Core.Entities.SolicitudEliminacion", b =>
+                {
+                    b.HasOne("Nexit.Core.Entities.Usuario", "AprobadoPorGerente")
+                        .WithMany()
+                        .HasForeignKey("AprobadoPorGerenteId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_solicitudes_eliminacion_usuarios_aprobado_por_gerente_id");
+
+                    b.HasOne("Nexit.Core.Entities.Usuario", "GerenteResponsable")
+                        .WithMany()
+                        .HasForeignKey("GerenteResponsableId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_solicitudes_eliminacion_usuarios_gerente_responsable_id");
+
+                    b.HasOne("Nexit.Core.Entities.Usuario", "RevisadoPor")
+                        .WithMany()
+                        .HasForeignKey("RevisadoPorId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_solicitudes_eliminacion_usuarios_revisado_por_id");
+
+                    b.HasOne("Nexit.Core.Entities.Usuario", "SolicitadoPor")
+                        .WithMany()
+                        .HasForeignKey("SolicitadoPorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_solicitudes_eliminacion_usuarios_solicitado_por_id");
+
+                    b.Navigation("AprobadoPorGerente");
+
+                    b.Navigation("GerenteResponsable");
+
+                    b.Navigation("RevisadoPor");
+
+                    b.Navigation("SolicitadoPor");
                 });
 
             modelBuilder.Entity("Nexit.Core.Entities.Cliente", b =>

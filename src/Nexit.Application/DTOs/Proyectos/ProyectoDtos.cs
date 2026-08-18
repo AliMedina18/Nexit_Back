@@ -26,6 +26,12 @@ public class CrearProyectoDto
     public bool Pagado { get; set; }
     public DateTime? FechaPago { get; set; }
     public string? Notas { get; set; }
+    /// <summary>
+    /// El gerente responsable/dueño del proyecto. Solo un administrador o super administrador puede
+    /// asignarlo o cambiarlo explícitamente por este campo — si quien crea/edita el proyecto es un
+    /// gerente y no envía este valor, el backend lo asigna automáticamente a sí mismo.
+    /// </summary>
+    public Guid? GerenteId { get; set; }
     public List<ProyectoEquipoDto> Equipo { get; set; } = [];
     public List<Guid> ProveedorIds { get; set; } = [];
 }

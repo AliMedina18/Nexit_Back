@@ -1,4 +1,6 @@
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.RateLimiting;
@@ -16,23 +18,85 @@ try
     builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 10 * 1024 * 1024);
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+
+    // JWT de Supabase Auth: hay dos modos posibles según cómo esté configurado el proyecto de Supabase
+    // (Settings → API → JWT Keys). El modo recomendado es el de claves asimétricas (Authority/JWKS,
+    // descubrimiento automático); el modo heredado usa un secreto compartido (HS256) y solo debe usarse
+    // si el proyecto de Supabase todavía no fue migrado. Ver docs/05-plan-remediacion-seguridad.md (H1).
+    var jwtAuthority = builder.Configuration["Jwt:Authority"];
+    var jwtLegacySharedSecret = builder.Configuration["Jwt:LegacySharedSecret"];
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
     {
-        options.Authority = builder.Configuration["Jwt:Authority"];
         options.Audience = builder.Configuration["Jwt:Audience"];
-        options.TokenValidationParameters = new TokenValidationParameters { ValidateIssuer = builder.Configuration.GetValue("Jwt:ValidateIssuer", true), ValidateAudience = builder.Configuration.GetValue("Jwt:ValidateAudience", true), ValidateLifetime = true };
+        var validateIssuer = builder.Configuration.GetValue("Jwt:ValidateIssuer", true);
+        var validateAudience = builder.Configuration.GetValue("Jwt:ValidateAudience", true);
+        if (!string.IsNullOrWhiteSpace(jwtLegacySharedSecret))
+        {
+            // Modo heredado: el proyecto Supabase todavía firma con el secreto compartido (HS256).
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = validateIssuer,
+                ValidIssuer = jwtAuthority,
+                ValidateAudience = validateAudience,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtLegacySharedSecret))
+            };
+        }
+        else
+        {
+            // Modo recomendado: claves de firma asimétricas de Supabase, descubiertas vía JWKS/OIDC.
+            options.Authority = jwtAuthority;
+            options.TokenValidationParameters = new TokenValidationParameters { ValidateIssuer = validateIssuer, ValidateAudience = validateAudience, ValidateLifetime = true };
+        }
     });
-    builder.Services.AddAuthorization(options => options.AddPolicy("AdminOnly", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
-        context.User.IsInRole("admin") || context.User.HasClaim("app_role", "admin") || context.User.HasClaim("user_role", "admin"))));
+    // Modelo de 4 roles (super_admin > admin > manager > miembro) — ver docs/06-modelo-permisos-roles.md.
+    // El claim de rol (app_role/user_role) lo agrega el Auth Hook de Supabase — ver docs/schema/03_auth_hook_custom_claims.sql.
+    // "SuperAdminOnly": únicamente la super administradora administra usuarios (crear/ver/editar/eliminar).
+    // "AdminOrAbove": administración directa de catálogos, y eliminación directa (sin pasar por una
+    // solicitud) de clientes/proveedores/proyectos/adjuntos — gerentes y miembros pasan por el flujo
+    // de solicitudes de eliminación (SolicitudesEliminacionController) en vez de este atajo.
+    bool HasRole(System.Security.Claims.ClaimsPrincipal user, string role) =>
+        user.IsInRole(role) || user.HasClaim("app_role", role) || user.HasClaim("user_role", role);
+    builder.Services.AddAuthorization(options =>
+    {
+        options.AddPolicy("SuperAdminOnly", policy => policy.RequireAuthenticatedUser().RequireAssertion(context => HasRole(context.User, "super_admin")));
+        options.AddPolicy("AdminOrAbove", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            HasRole(context.User, "admin") || HasRole(context.User, "super_admin")));
+    });
     var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
     if (allowedOrigins.Length == 0 && !builder.Environment.IsDevelopment()) throw new InvalidOperationException("Configure Cors:AllowedOrigins for production.");
     builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(allowedOrigins.Length > 0 ? allowedOrigins : ["http://localhost:3000", "http://localhost:5173"]).AllowAnyHeader().AllowAnyMethod()));
+
+    // Cabeceras reenviadas por el proxy inverso del proveedor de despliegue (Railway/Render/Azure/Fly.io, aún sin
+    // elegir). Sin esto, el rate limiting y cualquier log de IP verían solo la IP interna del proxy. Se deja sin
+    // proxies/redes de confianza por defecto (no reenvía nada) hasta que se elija el proveedor y se complete
+    // ForwardedHeaders:KnownProxies / ForwardedHeaders:KnownNetworks en appsettings.Production.json — confiar en
+    // encabezados reenviados sin saber quién los manda permitiría falsificar la IP de origen.
+    var forwardedHeadersOptions = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto };
+    foreach (var proxy in builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [])
+        if (System.Net.IPAddress.TryParse(proxy, out var proxyIp)) forwardedHeadersOptions.KnownProxies.Add(proxyIp);
+    foreach (var network in builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? [])
+    {
+        var parts = network.Split('/');
+        if (parts.Length == 2 && System.Net.IPAddress.TryParse(parts[0], out var networkIp) && int.TryParse(parts[1], out var prefixLength))
+            forwardedHeadersOptions.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(networkIp, prefixLength));
+    }
+
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.AddPolicy("api", context => RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimiting:PermitLimit", 100), Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
+        // Todo endpoint de esta API exige autenticación (BaseController lleva [Authorize]), así que se puede
+        // limitar por usuario en vez de por IP: evita que 20-25 personas trabajando desde la misma oficina
+        // (misma IP pública) se bloqueen entre sí como si fueran un solo cliente (hallazgo H7). Si por alguna
+        // razón la petición todavía no está autenticada (token ausente/ inválido), se cae de vuelta a la IP.
+        options.AddPolicy("api", context =>
+        {
+            var userId = context.User.FindFirst("sub")?.Value ?? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var partitionKey = userId is not null ? $"user:{userId}" : $"ip:{context.Connection.RemoteIpAddress}";
+            return RateLimitPartition.GetFixedWindowLimiter(partitionKey,
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimiting:PermitLimit", 100), Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true });
+        });
     });
     builder.Services.AddControllers();
     builder.Services.AddSwaggerGen(options =>
@@ -42,6 +106,7 @@ try
         options.AddSecurityRequirement(new OpenApiSecurityRequirement { { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }, [] } });
     });
     var app = builder.Build();
+    app.UseForwardedHeaders(forwardedHeadersOptions);
     app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
     app.UseMiddleware<SecurityHeadersMiddleware>();
     if (!app.Environment.IsDevelopment())
@@ -55,11 +120,18 @@ try
         app.UseSwaggerUI();
     }
     app.UseCors();
-    app.UseRateLimiter();
+    // La autenticación va antes que el rate limiter a propósito: así el partitioner de arriba
+    // puede leer el usuario autenticado (context.User) y limitar por persona, no solo por IP.
     app.UseAuthentication();
+    app.UseRateLimiter();
     app.UseAuthorization();
     app.MapControllers().RequireRateLimiting("api");
     app.Run();
 }
 catch (Exception ex) { Log.Fatal(ex, "Nexit API terminated unexpectedly"); }
 finally { Log.CloseAndFlush(); }
+
+// Clase parcial pública requerida por WebApplicationFactory<Program> en las pruebas de integración
+// (Nexit.Tests/Integration/*) — con top-level statements, la clase "Program" generada es internal
+// por defecto y el proyecto de pruebas no puede referenciarla sin esto.
+public partial class Program;

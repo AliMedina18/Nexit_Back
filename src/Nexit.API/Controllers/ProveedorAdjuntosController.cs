@@ -16,6 +16,6 @@ public class ProveedorAdjuntosController(IProveedorAdjuntosUseCase adjuntos) : C
     [HttpPost]
     public async Task<ActionResult<ProveedorAdjuntoDto>> Create(Guid proveedorId, CrearProveedorAdjuntoDto dto, CancellationToken ct) => Ok(await adjuntos.CrearAsync(proveedorId, dto, ct));
 
-    [HttpDelete("{id:guid}")]
+    [HttpDelete("{id:guid}"), Authorize(Policy = "AdminOrAbove")]
     public async Task<IActionResult> Delete(Guid proveedorId, Guid id, CancellationToken ct) { await adjuntos.EliminarAsync(proveedorId, id, ct); return NoContent(); }
 }

@@ -40,7 +40,14 @@ public class ProveedorAdjuntosUseCase(IProveedorRepository proveedores, IProveed
     private static void Validar(CrearProveedorAdjuntoDto input)
     {
         if (string.IsNullOrWhiteSpace(input.Nombre)) throw new BusinessRuleException("El nombre del adjunto es requerido.");
-        if (input.Tipo == "link" && string.IsNullOrWhiteSpace(input.Url)) throw new BusinessRuleException("Un adjunto de tipo link requiere una URL.");
+        if (input.Tipo == "link")
+        {
+            if (string.IsNullOrWhiteSpace(input.Url)) throw new BusinessRuleException("Un adjunto de tipo link requiere una URL.");
+            // Solo http/https: evita que se guarden esquemas como javascript:/data: que, si el frontend
+            // los renderiza como enlace clicable sin sanear, permitirían un XSS almacenado (hallazgo H9).
+            var esUrlValida = Uri.TryCreate(input.Url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+            if (!esUrlValida) throw new BusinessRuleException("La URL del adjunto debe ser un enlace http:// o https:// válido.");
+        }
         if (input.Tipo == "file" && string.IsNullOrWhiteSpace(input.StoragePath)) throw new BusinessRuleException("Un adjunto de tipo file requiere una ruta de almacenamiento.");
         if (input.Tipo is not ("link" or "file")) throw new BusinessRuleException("El tipo de adjunto debe ser link o file.");
     }

@@ -12,3 +12,18 @@ logs/
 *.log
 .DS_Store
 .idea/
+
+# Resultados de pruebas y cobertura (dotnet test)
+TestResults/
+*.trx
+coverage*.json
+coverage*.xml
+coverage*.info
+
+# Artefactos temporales de trabajo (zips de respaldo, carpetas de limpieza, etc.)
+# Si algún día necesitas subir un .zip real al repo, usa "git add -f" para ese archivo puntual.
+*.zip
+_to_delete/
+_audit_tmp/
+_scratch/
+*.tmp

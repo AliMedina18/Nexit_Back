@@ -13,7 +13,7 @@ public class InformesController(IConsultarInformesUseCase consultar, IGenerarInf
     [HttpGet("snapshots/{tipo}/{periodoKey}")]
     public async Task<ActionResult<InformeSnapshotDto>> GetSnapshot(string tipo, string periodoKey, CancellationToken ct) => Ok(await consultar.ObtenerSnapshotAsync(tipo, periodoKey, ct));
 
-    [HttpPost("snapshots"), Authorize(Policy = "AdminOnly")]
+    [HttpPost("snapshots"), Authorize(Policy = "AdminOrAbove")]
     public async Task<ActionResult<InformeSnapshotDto>> CrearSnapshot(CrearInformeSnapshotDto dto, CancellationToken ct)
     {
         var userId = GetUserId(); if (userId == Guid.Empty) return Unauthorized();

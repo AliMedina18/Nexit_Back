@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexit.Application.DTOs.Clientes;
 using Nexit.Application.UseCases.Clientes;
@@ -27,9 +28,10 @@ public class ClientesController(ICrearClienteUseCase crear, IActualizarClienteUs
         dto.Id = id;
         var validation = await updateValidator.ValidateAsync(dto, cancellationToken);
         if (!validation.IsValid) return BadRequest(new ValidationProblemDetails(validation.ToDictionary()));
-        return Ok(await actualizar.ExecuteAsync(dto, cancellationToken));
+        var userId = GetUserId(); if (userId == Guid.Empty) return Unauthorized();
+        return Ok(await actualizar.ExecuteAsync(dto, userId, cancellationToken));
     }
-    [HttpDelete("{id:guid}")]
+    [HttpDelete("{id:guid}"), Authorize(Policy = "AdminOrAbove")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         await eliminar.ExecuteAsync(id, cancellationToken);

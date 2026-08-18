@@ -17,10 +17,10 @@ public class CrearProveedorUseCase(IProveedorRepository repository, ICatalogosRe
 
 public class ActualizarProveedorUseCase(IProveedorRepository repository, ICatalogosRepository catalogos, IUnitOfWork unitOfWork) : IActualizarProveedorUseCase
 {
-    public async Task<ProveedorResponseDto> ExecuteAsync(UpdateProveedorDto input, CancellationToken ct = default)
+    public async Task<ProveedorResponseDto> ExecuteAsync(UpdateProveedorDto input, Guid usuarioId, CancellationToken ct = default)
     {
         var proveedor = await repository.GetByIdAsync(input.Id, ct) ?? throw new EntityNotFoundException("Proveedor", input.Id);
-        await ProveedorRules.ValidarCatalogos(input, catalogos, ct); ProveedorMapper.Apply(input, proveedor); proveedor.UpdatedAt = DateTime.UtcNow;
+        await ProveedorRules.ValidarCatalogos(input, catalogos, ct); ProveedorMapper.Apply(input, proveedor); proveedor.UpdatedAt = DateTime.UtcNow; proveedor.UpdatedBy = usuarioId;
         repository.Update(proveedor); await unitOfWork.SaveChangesAsync(ct); return ProveedorMapper.ToResponse(proveedor);
     }
 }

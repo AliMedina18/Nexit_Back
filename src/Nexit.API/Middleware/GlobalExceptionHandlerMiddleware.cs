@@ -16,7 +16,9 @@ public class GlobalExceptionHandlerMiddleware(RequestDelegate next, ILogger<Glob
             var (statusCode, message) = exception switch
             {
                 EntityNotFoundException => (StatusCodes.Status404NotFound, exception.Message),
+                ForbiddenOperationException => (StatusCodes.Status403Forbidden, exception.Message),
                 BusinessRuleException => (StatusCodes.Status409Conflict, exception.Message),
+                DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Otra persona modificó este registro mientras lo editabas. Recarga los datos e inténtalo de nuevo."),
                 DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } } => (StatusCodes.Status409Conflict, "El registro ya existe o entra en conflicto con uno existente."),
                 DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation } } => (StatusCodes.Status409Conflict, "La operación viola una relación requerida."),
                 DbUpdateException => (StatusCodes.Status409Conflict, "La operación no pudo completarse por una restricción de datos."),

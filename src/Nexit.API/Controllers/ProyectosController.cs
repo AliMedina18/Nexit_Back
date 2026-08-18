@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexit.Application.DTOs.Proyectos;
 using Nexit.Application.UseCases.Proyectos;
@@ -19,7 +20,7 @@ public class ProyectosController(ICrearProyectoUseCase crear, IActualizarProyect
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid) return BadRequest(new ValidationProblemDetails(validation.ToDictionary()));
         var userId = GetUserId(); if (userId == Guid.Empty) return Unauthorized();
-        var result = await crear.ExecuteAsync(dto, userId, ct);
+        var result = await crear.ExecuteAsync(dto, userId, GetUserRole(), ct);
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
@@ -28,10 +29,11 @@ public class ProyectosController(ICrearProyectoUseCase crear, IActualizarProyect
     {
         dto.Id = id; var validation = await updateValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid) return BadRequest(new ValidationProblemDetails(validation.ToDictionary()));
-        return Ok(await actualizar.ExecuteAsync(dto, ct));
+        var userId = GetUserId(); if (userId == Guid.Empty) return Unauthorized();
+        return Ok(await actualizar.ExecuteAsync(dto, userId, GetUserRole(), ct));
     }
 
-    [HttpDelete("{id:guid}")]
+    [HttpDelete("{id:guid}"), Authorize(Policy = "AdminOrAbove")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { await eliminar.ExecuteAsync(id, ct); return NoContent(); }
 
     [HttpPost("{id:guid}/seguimiento")]

@@ -23,7 +23,7 @@ public class CrearClienteUseCase(IClienteRepository repository, IUnitOfWork unit
 
 public class ActualizarClienteUseCase(IClienteRepository repository, IUnitOfWork unitOfWork) : IActualizarClienteUseCase
 {
-    public async Task<ClienteResponseDto> ExecuteAsync(UpdateClienteDto input, CancellationToken cancellationToken = default)
+    public async Task<ClienteResponseDto> ExecuteAsync(UpdateClienteDto input, Guid usuarioId, CancellationToken cancellationToken = default)
     {
         var cliente = await repository.GetByIdAsync(input.Id, cancellationToken) ?? throw new EntityNotFoundException("Cliente", input.Id);
         ClienteMapper.Apply(input, cliente);
@@ -36,6 +36,7 @@ public class ActualizarClienteUseCase(IClienteRepository repository, IUnitOfWork
             });
         }
         cliente.UpdatedAt = DateTime.UtcNow;
+        cliente.UpdatedBy = usuarioId;
         repository.Update(cliente);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return ClienteMapper.ToResponse(cliente);
