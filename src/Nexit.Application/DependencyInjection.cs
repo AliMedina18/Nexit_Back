@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.AddScoped<IConsultarProyectosUseCase, ConsultarProyectosUseCase>();
         services.AddScoped<IEliminarProyectoUseCase, EliminarProyectoUseCase>();
         services.AddScoped<IAgregarSeguimientoProyectoUseCase, AgregarSeguimientoProyectoUseCase>();
+        services.AddScoped<IConsultarCalendarioProyectosUseCase, ConsultarCalendarioProyectosUseCase>();
         services.AddScoped<IConsultarInformesUseCase, ConsultarInformesUseCase>();
         services.AddScoped<IGenerarInformeSnapshotUseCase, GenerarInformeSnapshotUseCase>();
         services.AddScoped<ICrearUsuarioUseCase, CrearUsuarioUseCase>();

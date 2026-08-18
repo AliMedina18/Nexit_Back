@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Nexit.Application.Services;
 using Nexit.Core.Interfaces;
 using Nexit.Infrastructure.Data;
 using Nexit.Infrastructure.Repositories;
+using Nexit.Infrastructure.Services;
 using Nexit.Infrastructure.UnitOfWork;
 
 namespace Nexit.Infrastructure;
@@ -24,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<ICatalogosRepository, CatalogosRepository>();
         services.AddScoped<IUsuarioRepository, UsuarioRepository>();
         services.AddScoped<ISolicitudEliminacionRepository, SolicitudEliminacionRepository>();
+        services.AddSingleton<IInformeExcelExporter, InformeExcelExporter>();
         return services;
     }
 }

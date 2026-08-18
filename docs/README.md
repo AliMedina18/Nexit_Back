@@ -8,7 +8,8 @@ Este índice existe para que cualquiera (incluida una futura sesión) pueda reto
 2. Se diseñó y construyó el backend (Clean Architecture, .NET 8): las 4 capas, los controladores, autenticación JWT, autorización → **Fase 2 (construcción del backend), en marcha y bastante avanzada.**
 3. Se auditó ese backend (funcionalidad + seguridad) y se aplicaron las correcciones que no dependen de que exista todavía un proyecto de Supabase real → **hecho el 2026-08-17, ver el documento 02 y el 05.**
 4. Se diseñó e implementó el modelo de permisos de 4 niveles (super_admin/admin/manager/miembro), con el flujo de solicitudes de eliminación para clientes/proveedores/proyectos → **hecho el 2026-08-18, ver el documento 06.**
-5. Pendiente: crear el proyecto de Supabase, terminar de conectar los puntos que quedaron condicionados a que exista (firma de JWT, rol de base de datos), y avanzar con el frontend y el despliegue.
+5. Se construyó la lógica de backend del calendario de proyectos (por mes/año, eficiente), se restringieron los informes a solo super_admin/admin, y se agregó exportación a Excel de informes → **hecho el 2026-08-18, ver el documento 07.**
+6. Pendiente: crear el proyecto de Supabase, terminar de conectar los puntos que quedaron condicionados a que exista (firma de JWT, rol de base de datos), y avanzar con el frontend (incluida la vista visual del calendario) y el despliegue.
 
 ## Documentos
 
@@ -18,6 +19,7 @@ Este índice existe para que cualquiera (incluida una futura sesión) pueda reto
 | 02 | [`02-auditoria-seguridad-backend.md`](02-auditoria-seguridad-backend.md) | Auditoría de funcionalidad y seguridad del backend ya construido: qué compila, qué pasa en pruebas, y 12 hallazgos priorizados (H1-H12). |
 | 05 | [`05-plan-remediacion-seguridad.md`](05-plan-remediacion-seguridad.md) | Qué se corrigió de esos 12 hallazgos, cómo, qué queda pendiente y por qué (casi todo lo pendiente depende de que exista un proyecto de Supabase real), más la investigación de APIs públicas para almacenamiento de adjuntos y geolocalización. |
 | 06 | [`06-modelo-permisos-roles.md`](06-modelo-permisos-roles.md) | Modelo de permisos de 4 niveles (super_admin/admin/manager/miembro): matriz de permisos, el concepto de gerente "dueño" de un proyecto, y el flujo de solicitudes de eliminación para clientes/proveedores/proyectos. |
+| 07 | [`07-calendario-e-informes-excel.md`](07-calendario-e-informes-excel.md) | Backend del calendario de proyectos (por mes/año, agregación eficiente sin cargar entidades completas), restricción de Informes a solo super_admin/admin, y exportación a Excel de informes con ClosedXML. |
 | — | [`preguntas-permisos-roles-para-companera.md`](preguntas-permisos-roles-para-companera.md) | Preguntas preparadas para la compañera de equipo sobre el flujo de permisos — la usuaria terminó respondiéndolas ella misma directamente (ver documento 06), quedan aquí como referencia. |
 | — | [`schema/nexus_schema_v2.sql`](schema/nexus_schema_v2.sql) | El esquema SQL de referencia para crear la base de datos en Supabase (tablas, triggers, Row Level Security), incluido el modelo de permisos de 4 niveles y solicitudes_eliminacion (novena revisión). Este es el que se ejecuta una sola vez al crear el proyecto Supabase — no se aplica con las migraciones de Entity Framework Core. |
 | — | [`schema/02_rol_aplicacion_minimo_privilegio.sql`](schema/02_rol_aplicacion_minimo_privilegio.sql) | Crea el rol `nexit_app` de mínimo privilegio que usa el backend para conectarse (hallazgo H2). |
