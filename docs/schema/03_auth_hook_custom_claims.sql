@@ -26,6 +26,7 @@ CREATE OR REPLACE FUNCTION public.custom_access_token_hook(event jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   claims jsonb;

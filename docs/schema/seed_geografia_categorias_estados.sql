@@ -603,15 +603,16 @@ INSERT INTO estados_proyecto (nombre, fase, orden) VALUES
   ('Ejecutado, pendiente facturar', 3, 8),
   ('Facturado', 3, 9);
 
--- ---------- DOMINIOS DE CORREO PERMITIDOS (octava revisión; ampliado 2026-08-18) ----------
--- 'agencianextmkt.com' es el dominio CONFIRMADO de verdad: la usuaria lo dio con el correo
--- real de una compañera que ya trabaja ahí (yuliana.navarro@agencianextmkt.com), no un placeholder.
--- 'nextexperiencial.com' es el dominio que usaba el prototipo HTML como placeholder del campo de
--- login ("nombre@nextexperiencial.com") -- nunca se confirmó con un correo real, se deja aquí por
--- si de verdad es un dominio válido adicional (la tabla está pensada para admitir varios), pero
--- convendría confirmarlo o quitarlo con el equipo. En los Excel también aparece 'nextcolombia.com'
--- en un correo de contacto, pero no hay evidencia de que sea un dominio de LOGIN del sistema (podría
--- ser solo un correo comercial de cara al cliente) -- sigue pendiente de confirmar antes de habilitarlo.
+-- ---------- DOMINIOS DE CORREO PERMITIDOS (novena revisión; confirmado 2026-08-23) ----------
+-- 'agencianextmkt.com' es el ÚNICO dominio permitido para iniciar sesión en el sistema --
+-- confirmado explícitamente por la usuaria, con ejemplos reales de cuentas bajo ese dominio
+-- (analistacompras@agencianextmkt.com, yuliana.navarro@agencianextmkt.com). La cuenta de Gmail
+-- (analistacompras.nexit@gmail.com) que se usa para el envío de correos NO es una cuenta que vaya
+-- a iniciar sesión en el sistema -- es solo la que administra el SMTP, por eso su dominio no está
+-- ni debe estar en esta lista.
+-- 'nextexperiencial.com' se retiró en esta revisión: era un dominio sin confirmar (placeholder del
+-- prototipo HTML), y la usuaria ya confirmó que el único dominio de login es 'agencianextmkt.com'.
+-- Si más adelante hace falta agregar otro dominio, es un INSERT nuevo en esta misma tabla -- no
+-- requiere cambios de código, la validación (trigger + FluentValidation) ya lee esta tabla en vivo.
 INSERT INTO dominios_correo_permitidos (dominio) VALUES
-  ('agencianextmkt.com'),
-  ('nextexperiencial.com');
+  ('agencianextmkt.com');

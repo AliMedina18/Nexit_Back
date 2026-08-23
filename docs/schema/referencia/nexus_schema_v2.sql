@@ -1,4 +1,17 @@
 -- ============================================================
+-- ADVERTENCIA (agregada 2026-08-20): NO ejecutar este archivo completo para crear un
+-- proyecto de Supabase nuevo. Quedó desactualizado frente a las migraciones reales de
+-- EF Core (ej. falta la columna `updated_by`, agregada por la migración
+-- `AddConcurrencyAndAuditTracking`) -- usarlo tal cual reproduce el mismo problema de
+-- esquema desincronizado que se encontró y corrigió en la base local `nexit_dev`.
+-- Para crear un proyecto nuevo, sigue en cambio docs/09-crear-proyecto-supabase-paso-a-paso.md:
+-- las tablas se crean con `dotnet ef database update`, y solo lo que ese comando no
+-- puede crear (la relación con auth.users y Row Level Security) se aplica aparte con
+-- docs/schema/04_extras_supabase_post_migraciones.sql. Este archivo se conserva como
+-- referencia legible del diseño completo, no como script para ejecutar de punta a punta.
+-- ============================================================
+
+-- ============================================================
 -- NEXUS · Esquema de base de datos v2 (PostgreSQL / Supabase)
 -- Fase 1 · Análisis y planificación — Proyecto "Nexit"
 --

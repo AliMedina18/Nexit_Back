@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<IInformesRepository, InformesRepository>();
         services.AddScoped<ICatalogosRepository, CatalogosRepository>();
         services.AddScoped<IUsuarioRepository, UsuarioRepository>();
+        services.AddScoped<IDominioCorreoPermitidoRepository, DominioCorreoPermitidoRepository>();
         services.AddScoped<ISolicitudEliminacionRepository, SolicitudEliminacionRepository>();
         services.AddSingleton<IInformeExcelExporter, InformeExcelExporter>();
         return services;
