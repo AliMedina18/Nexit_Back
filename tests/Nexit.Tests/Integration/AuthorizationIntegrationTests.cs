@@ -237,4 +237,47 @@ public class AuthorizationIntegrationTests(NexitApiFactory factory) : IClassFixt
         var response = await _client.GetAsync("/api/calendario/2026");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
+
+    // Eliminación automática de usuarios inactivos (docs/17-eliminacion-automatica-usuarios.md): el
+    // claim user_active=false debe bloquear TODO, incluido un endpoint de solo [Authorize] sin rol
+    // específico -- no solo las políticas SuperAdminOnly/AdminOrAbove. Sin esto, "desactivar" a
+    // alguien sería puramente cosmético.
+    [Fact]
+    public async Task GetClientes_with_an_inactive_account_returns_403_even_though_the_role_would_normally_pass()
+    {
+        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
+        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestActiveHeader);
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, "admin");
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestActiveHeader, "false");
+
+        var response = await _client.GetAsync("/api/clientes");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetUsuarios_with_an_inactive_super_admin_returns_403()
+    {
+        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
+        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestActiveHeader);
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, "super_admin");
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestActiveHeader, "false");
+
+        var response = await _client.GetAsync("/api/usuarios");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetClientes_with_an_active_account_is_not_blocked_by_the_active_check()
+    {
+        // Ausencia del claim (o explícitamente activo) sigue pasando -- no es un bloqueo por defecto.
+        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
+        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestActiveHeader);
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, "miembro");
+
+        var response = await _client.GetAsync("/api/clientes");
+
+        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+    }
 }

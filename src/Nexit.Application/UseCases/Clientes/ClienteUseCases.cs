@@ -1,11 +1,13 @@
 using Nexit.Application.DTOs.Clientes;
+using Nexit.Application.UseCases.Historial;
 using Nexit.Core.Entities;
 using Nexit.Core.Exceptions;
 using Nexit.Core.Interfaces;
+using Nexit.Core.Utils;
 
 namespace Nexit.Application.UseCases.Clientes;
 
-public class CrearClienteUseCase(IClienteRepository repository, IUnitOfWork unitOfWork) : ICrearClienteUseCase
+public class CrearClienteUseCase(IClienteRepository repository, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : ICrearClienteUseCase
 {
     public async Task<ClienteResponseDto> ExecuteAsync(CreateClienteDto input, Guid usuarioId, CancellationToken cancellationToken = default)
     {
@@ -16,16 +18,18 @@ public class CrearClienteUseCase(IClienteRepository repository, IUnitOfWork unit
             Id = phone.Id ?? Guid.NewGuid(), ClienteId = cliente.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta
         }).ToList();
         await repository.AddAsync(cliente, cancellationToken);
+        await HistorialRegistrador.RegistrarCreacionAsync(historial, "cliente", cliente.Id, usuarioId, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return ClienteMapper.ToResponse(cliente);
     }
 }
 
-public class ActualizarClienteUseCase(IClienteRepository repository, IUnitOfWork unitOfWork) : IActualizarClienteUseCase
+public class ActualizarClienteUseCase(IClienteRepository repository, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : IActualizarClienteUseCase
 {
     public async Task<ClienteResponseDto> ExecuteAsync(UpdateClienteDto input, Guid usuarioId, CancellationToken cancellationToken = default)
     {
         var cliente = await repository.GetByIdAsync(input.Id, cancellationToken) ?? throw new EntityNotFoundException("Cliente", input.Id);
+        var antes = CambioDetector.Snapshot(cliente);
         ClienteMapper.Apply(input, cliente);
         cliente.Telefonos.Clear();
         foreach (var phone in input.Telefonos)
@@ -52,6 +56,7 @@ public class ActualizarClienteUseCase(IClienteRepository repository, IUnitOfWork
         // INSERT para esos teléfonos nuevos, que falla con DbUpdateConcurrencyException (0 filas afectadas,
         // porque esa fila todavía no existe) -- un bug real que solo aparece contra Postgres de verdad, no
         // con los repositorios mockeados de las pruebas unitarias (ver docs/08-tipos-de-pruebas.md).
+        await HistorialRegistrador.RegistrarEdicionAsync(historial, "cliente", cliente.Id, usuarioId, antes, cliente, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return ClienteMapper.ToResponse(cliente);
     }
@@ -85,12 +90,13 @@ internal static class ClienteMapper
     };
 }
 
-public class EliminarClienteUseCase(IClienteRepository repository, IUnitOfWork unitOfWork) : IEliminarClienteUseCase
+public class EliminarClienteUseCase(IClienteRepository repository, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : IEliminarClienteUseCase
 {
-    public async Task ExecuteAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task ExecuteAsync(Guid id, Guid usuarioId, CancellationToken cancellationToken = default)
     {
         if (await repository.GetByIdAsync(id, cancellationToken) is null) throw new EntityNotFoundException("Cliente", id);
         await repository.DeleteAsync(id, cancellationToken);
+        await HistorialRegistrador.RegistrarEliminacionAsync(historial, "cliente", id, usuarioId, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }

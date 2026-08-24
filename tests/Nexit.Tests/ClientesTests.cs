@@ -37,7 +37,7 @@ public class ClientesTests
         Cliente? saved = null;
         repository.Setup(x => x.AddAsync(It.IsAny<Cliente>(), It.IsAny<CancellationToken>())).Callback<Cliente, CancellationToken>((client, _) => saved = client).Returns(Task.CompletedTask);
         var authorId = Guid.NewGuid();
-        var result = await new CrearClienteUseCase(repository.Object, unitOfWork.Object).ExecuteAsync(new CreateClienteDto { Nombre = "Acme", Telefonos = [new ClienteTelefonoDto { Telefono = "555-0100" }] }, authorId);
+        var result = await new CrearClienteUseCase(repository.Object, Mock.Of<IHistorialCambioRepository>(), unitOfWork.Object).ExecuteAsync(new CreateClienteDto { Nombre = "Acme", Telefonos = [new ClienteTelefonoDto { Telefono = "555-0100" }] }, authorId);
         Assert.Equal("Acme", result.Nombre);
         Assert.NotNull(saved);
         Assert.Equal(authorId, saved!.CreatedBy);
@@ -50,7 +50,7 @@ public class ClientesTests
     {
         var repository = new Mock<IClienteRepository>();
         repository.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Cliente?)null);
-        await Assert.ThrowsAsync<EntityNotFoundException>(() => new ActualizarClienteUseCase(repository.Object, Mock.Of<IUnitOfWork>()).ExecuteAsync(new UpdateClienteDto { Id = Guid.NewGuid() }, Guid.NewGuid()));
+        await Assert.ThrowsAsync<EntityNotFoundException>(() => new ActualizarClienteUseCase(repository.Object, Mock.Of<IHistorialCambioRepository>(), Mock.Of<IUnitOfWork>()).ExecuteAsync(new UpdateClienteDto { Id = Guid.NewGuid() }, Guid.NewGuid()));
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class ClientesTests
         var cliente = new Cliente { Id = clienteId, Nombre = "Acme" };
         repository.Setup(x => x.GetByIdAsync(clienteId, It.IsAny<CancellationToken>())).ReturnsAsync(cliente);
 
-        await new ActualizarClienteUseCase(repository.Object, unitOfWork.Object).ExecuteAsync(new UpdateClienteDto { Id = clienteId, Nombre = "Acme Corp" }, editorId);
+        await new ActualizarClienteUseCase(repository.Object, Mock.Of<IHistorialCambioRepository>(), unitOfWork.Object).ExecuteAsync(new UpdateClienteDto { Id = clienteId, Nombre = "Acme Corp" }, editorId);
 
         Assert.Equal(editorId, cliente.UpdatedBy);
         Assert.NotNull(cliente.UpdatedAt);

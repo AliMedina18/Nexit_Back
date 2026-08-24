@@ -21,6 +21,13 @@
 -- 3) Los tokens NUEVOS que se emitan después de esto ya traen el claim `user_role`. Los
 --    tokens ya emitidos antes de activar el hook no lo tienen hasta que el usuario
 --    vuelva a iniciar sesión (o se le refresque el token).
+--
+-- Actualización 2026-08-23 (eliminación automática de usuarios inactivos, ver
+-- docs/17-eliminacion-automatica-usuarios.md): el hook ahora también agrega el claim
+-- `user_active`="false" cuando usuarios.activo es false, para que el backend pueda
+-- bloquear a alguien desactivado de inmediato (bueno, en cuanto le toque renovar el
+-- token -- ver el comentario sobre esto en Nexit.API/Program.cs). Ausencia del claim se
+-- trata como activa, a propósito -- ver esa misma nota para el porqué.
 
 CREATE OR REPLACE FUNCTION public.custom_access_token_hook(event jsonb)
 RETURNS jsonb
@@ -31,8 +38,9 @@ AS $$
 DECLARE
   claims jsonb;
   rol_usuario text;
+  usuario_activo boolean;
 BEGIN
-  SELECT rol INTO rol_usuario FROM public.usuarios WHERE id = (event->>'user_id')::uuid;
+  SELECT rol, activo INTO rol_usuario, usuario_activo FROM public.usuarios WHERE id = (event->>'user_id')::uuid;
 
   claims := COALESCE(event->'claims', '{}'::jsonb);
 
@@ -43,6 +51,10 @@ BEGIN
     -- mitad del flujo de registro), se le asigna el rol menos privilegiado por defecto
     -- en vez de dejarlo sin claim (que además rompería políticas que sí esperan el claim).
     claims := jsonb_set(claims, '{user_role}', '"miembro"');
+  END IF;
+
+  IF usuario_activo IS FALSE THEN
+    claims := jsonb_set(claims, '{user_active}', 'false');
   END IF;
 
   event := jsonb_set(event, '{claims}', claims);

@@ -48,6 +48,15 @@ public class ProyectoResponseDto : CrearProyectoDto
     public DateTime? UpdatedAt { get; set; }
 }
 
+/// <summary>Un proyecto puntuado por <c>ConsultarPrioridadProyectosUseCase</c> (docs/21, docs/22) -- el puntaje siempre viene acompañado de sus razones, nunca solo.</summary>
+public class ProyectoPrioridadResponseDto
+{
+    public Guid ProyectoId { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public int Puntaje { get; set; }
+    public List<string> Razones { get; set; } = [];
+}
+
 public class CrearSeguimientoProyectoDto
 {
     public string Area { get; set; } = "General";

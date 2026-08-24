@@ -9,4 +9,4 @@ public interface IConsultarClientesUseCase
     Task<IReadOnlyList<ClienteResponseDto>> ListAsync(CancellationToken cancellationToken = default);
     Task<ClienteResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 }
-public interface IEliminarClienteUseCase { Task ExecuteAsync(Guid id, CancellationToken cancellationToken = default); }
+public interface IEliminarClienteUseCase { Task ExecuteAsync(Guid id, Guid usuarioId, CancellationToken cancellationToken = default); }

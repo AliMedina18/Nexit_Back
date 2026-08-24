@@ -46,6 +46,20 @@ Ninguna de estas etapas pasa por `Nexit_Back` — el intercambio de credenciales
 
 **Detalle importante para el frontend:** ya no existe una cuenta "sin camino de contraseña" — toda cuenta, sin importar el rol, termina teniendo una después de su primer ingreso. La pantalla de login ya no necesita decidir "esta cuenta usa código o contraseña" por adelantado: simplemente ofrece "iniciar con código" (para quien todavía no tiene contraseña) e "iniciar con contraseña" (para quien ya la tiene), y el correo puede quedar recordado del ingreso anterior para prellenar el campo.
 
+### 2.3. Cerrar sesión (agregado 2026-08-23)
+
+Igual que el resto de la autenticación, es 100% Supabase — el botón de "cerrar sesión" del frontend llama a `supabase.auth.signOut()` y ya. `Nexit_Back` no interviene, no hay ningún endpoint de logout que llamar aparte de eso. Paso a paso completo: `docs/12-historias-de-usuario.md`, HU-07.
+
+Lo único que sí hay que decidir es el `scope` de esa llamada — Supabase soporta tres:
+
+- **`local`** (recomendado para el botón normal de "cerrar sesión"): termina solo la sesión de ese navegador/dispositivo, deja las demás activas. Es el comportamiento que la gente espera de un botón de logout — cerrar sesión en el computador de la oficina no debería sacarte también del celular.
+- **`global`**: termina TODAS las sesiones de esa cuenta, en todos los dispositivos.
+- **`others`**: termina todas menos la actual (útil para un botón tipo "cerrar sesión en mis otros dispositivos", si algún día se quiere agregar).
+
+Con `local` como comportamiento del botón principal, `global` queda como una opción razonable para ofrecer aparte (no obligatoria para la primera versión) en algo como "cerrar sesión en todos lados" dentro de la configuración de la cuenta.
+
+**Límite real de Supabase, verificado en su documentación oficial (no es una suposición):** cerrar sesión revoca el *refresh token* de inmediato, pero el *access token* (el JWT que ya se entregó) **sigue siendo válido hasta que expira por su cuenta** — Supabase lo dice explícitamente: "el usuario no se desloguea de inmediato, solo cuando el Access Token expira". Es el mismo límite que ya quedó documentado en `docs/17-eliminacion-automatica-usuarios.md` (sección 6) para cuando se desactiva a alguien — no es un caso aparte, es como está construido Supabase Auth (tokens JWT sin estado, verificados por firma, no contra una sesión viva en cada petición). Ver la sección 6 de `docs/17` para la recomendación concreta de cómo acortar esa ventana (bajar el tiempo de expiración del token en el dashboard).
+
 ## 3. Cómo se valida el login del lado del backend (sin correo de por medio)
 
 Una vez el frontend ya tiene el JWT de Supabase, cada petición a la API lo manda en el header `Authorization`. El backend (`Program.cs`) lo valida contra Supabase (modo recomendado: claves asimétricas vía JWKS, usando `Jwt:Authority` = `https://<proyecto>.supabase.co/auth/v1`) y lee del token el rol de negocio (`user_role`, agregado por un Auth Hook de Postgres — no algo que Supabase traiga de fábrica). Con ese rol decide qué endpoints puede usar la persona (`SuperAdminOnly`, `AdminOrAbove`, o simplemente autenticado). Nada de esto involucra correo — se menciona aquí solo porque es la pieza que conecta el login (sección 2.2) con el resto del sistema.

@@ -1,26 +1,32 @@
 using Nexit.Application.DTOs.Proveedores;
+using Nexit.Application.UseCases.Historial;
 using Nexit.Core.Entities;
 using Nexit.Core.Exceptions;
 using Nexit.Core.Interfaces;
+using Nexit.Core.Utils;
 
 namespace Nexit.Application.UseCases.Proveedores;
 
-public class CrearProveedorUseCase(IProveedorRepository repository, ICatalogosRepository catalogos, IUnitOfWork unitOfWork) : ICrearProveedorUseCase
+public class CrearProveedorUseCase(IProveedorRepository repository, ICatalogosRepository catalogos, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : ICrearProveedorUseCase
 {
     public async Task<ProveedorResponseDto> ExecuteAsync(CreateProveedorDto input, Guid usuarioId, CancellationToken ct = default)
     {
         await ProveedorRules.ValidarCatalogos(input, catalogos, ct);
         var proveedor = ProveedorMapper.ToEntity(input); proveedor.CreatedBy = usuarioId;
-        await repository.AddAsync(proveedor, ct); await unitOfWork.SaveChangesAsync(ct); return ProveedorMapper.ToResponse(proveedor);
+        await repository.AddAsync(proveedor, ct);
+        await HistorialRegistrador.RegistrarCreacionAsync(historial, "proveedor", proveedor.Id, usuarioId, ct);
+        await unitOfWork.SaveChangesAsync(ct); return ProveedorMapper.ToResponse(proveedor);
     }
 }
 
-public class ActualizarProveedorUseCase(IProveedorRepository repository, ICatalogosRepository catalogos, IUnitOfWork unitOfWork) : IActualizarProveedorUseCase
+public class ActualizarProveedorUseCase(IProveedorRepository repository, ICatalogosRepository catalogos, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : IActualizarProveedorUseCase
 {
     public async Task<ProveedorResponseDto> ExecuteAsync(UpdateProveedorDto input, Guid usuarioId, CancellationToken ct = default)
     {
         var proveedor = await repository.GetByIdAsync(input.Id, ct) ?? throw new EntityNotFoundException("Proveedor", input.Id);
+        var antes = CambioDetector.Snapshot(proveedor);
         await ProveedorRules.ValidarCatalogos(input, catalogos, ct); ProveedorMapper.Apply(input, proveedor); proveedor.UpdatedAt = DateTime.UtcNow; proveedor.UpdatedBy = usuarioId;
+        await HistorialRegistrador.RegistrarEdicionAsync(historial, "proveedor", proveedor.Id, usuarioId, antes, proveedor, ct);
         // No repository.Update(proveedor) -- ya está rastreado (se obtuvo con GetByIdAsync en este mismo
         // scope); llamar DbSet.Update() aquí marcaría como Modified (en vez de Added) los ProveedorTelefono
         // y ProveedorServicio nuevos que ProveedorMapper.Apply acaba de agregar con un Id ya asignado,
@@ -35,12 +41,14 @@ public class ConsultarProveedoresUseCase(IProveedorRepository repository) : ICon
     public async Task<ProveedorResponseDto> GetByIdAsync(Guid id, CancellationToken ct = default) => ProveedorMapper.ToResponse(await repository.GetByIdAsync(id, ct) ?? throw new EntityNotFoundException("Proveedor", id));
 }
 
-public class EliminarProveedorUseCase(IProveedorRepository repository, IUnitOfWork unitOfWork) : IEliminarProveedorUseCase
+public class EliminarProveedorUseCase(IProveedorRepository repository, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : IEliminarProveedorUseCase
 {
-    public async Task ExecuteAsync(Guid id, CancellationToken ct = default)
+    public async Task ExecuteAsync(Guid id, Guid usuarioId, CancellationToken ct = default)
     {
         if (await repository.GetByIdAsync(id, ct) is null) throw new EntityNotFoundException("Proveedor", id);
-        await repository.DeleteAsync(id, ct); await unitOfWork.SaveChangesAsync(ct);
+        await repository.DeleteAsync(id, ct);
+        await HistorialRegistrador.RegistrarEliminacionAsync(historial, "proveedor", id, usuarioId, ct);
+        await unitOfWork.SaveChangesAsync(ct);
     }
 }
 
@@ -59,7 +67,11 @@ internal static class ProveedorMapper
     public static ProveedorResponseDto ToResponse(Proveedor entity) => new()
     {
         Id = entity.Id, Nombre = entity.Nombre, PaisId = entity.PaisId, RegionId = entity.RegionId, CiudadId = entity.CiudadId, CategoriaId = entity.CategoriaId, Estado = entity.Estado, Contacto = entity.Contacto, CargoContacto = entity.CargoContacto, Email = entity.Email, Web = entity.Web, Direccion = entity.Direccion, Aforo = entity.Aforo, CostoReferencia = entity.CostoReferencia, Score = entity.Score, Presupuesto = entity.Presupuesto, Cobertura = entity.Cobertura, Notas = entity.Notas, CreatedAt = entity.CreatedAt, UpdatedAt = entity.UpdatedAt,
-        Telefonos = entity.Telefonos.Select(x => new ProveedorTelefonoDto { Id = x.Id, Telefono = x.Telefono, Etiqueta = x.Etiqueta }).ToList(), ServicioIds = entity.Servicios.Select(x => x.ServicioId).ToList()
+        Telefonos = entity.Telefonos.Select(x => new ProveedorTelefonoDto { Id = x.Id, Telefono = x.Telefono, Etiqueta = x.Etiqueta }).ToList(), ServicioIds = entity.Servicios.Select(x => x.ServicioId).ToList(),
+        // Colaboradores.Usuario puede venir null si el repositorio no lo incluyó (por ejemplo, en pruebas
+        // que arman un Proveedor a mano) -- se filtra en vez de lanzar, ver ProveedorRepository.GetByIdAsync/GetAllAsync.
+        Colaboradores = entity.Colaboradores.Where(x => x.Usuario is not null)
+            .Select(x => new ColaboradorProveedorDto { UsuarioId = x.UsuarioId, Nombre = $"{x.Usuario.Nombre} {x.Usuario.Apellido}".Trim(), Iniciales = x.Usuario.Iniciales }).ToList()
     };
 }
 

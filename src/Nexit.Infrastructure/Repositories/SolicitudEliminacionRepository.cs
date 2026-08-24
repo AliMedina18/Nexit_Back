@@ -18,4 +18,9 @@ public class SolicitudEliminacionRepository(NexitDbContext context) : Repository
 
     public async Task<IReadOnlyList<SolicitudEliminacion>> GetPendientesParaGerenteAsync(Guid gerenteId, CancellationToken cancellationToken = default) =>
         await DbSet.AsNoTracking().Where(x => x.Estado == "pendiente_gerente" && x.GerenteResponsableId == gerenteId).OrderBy(x => x.CreatedAt).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<SolicitudEliminacion>> GetOtrasPendientesPorEntidadAsync(string tipoEntidad, Guid entidadId, Guid excluirSolicitudId, CancellationToken cancellationToken = default) =>
+        await DbSet.Where(x => x.TipoEntidad == tipoEntidad && x.EntidadId == entidadId && x.Id != excluirSolicitudId
+                             && (x.Estado == "pendiente_gerente" || x.Estado == "pendiente_admin"))
+            .ToListAsync(cancellationToken);
 }

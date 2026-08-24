@@ -32,9 +32,18 @@ public class CreateProveedorDto
 
 public class UpdateProveedorDto : CreateProveedorDto { public Guid Id { get; set; } }
 
+/// <summary>Alguien marcado como "trabajando con este proveedor" (docs/19) -- los "circulitos" de la lista general.</summary>
+public class ColaboradorProveedorDto
+{
+    public Guid UsuarioId { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public string? Iniciales { get; set; }
+}
+
 public class ProveedorResponseDto : CreateProveedorDto
 {
     public Guid Id { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public List<ColaboradorProveedorDto> Colaboradores { get; set; } = [];
 }

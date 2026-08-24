@@ -7,6 +7,8 @@ using Nexit.Application.UseCases.Proyectos;
 using Nexit.Application.UseCases.Informes;
 using Nexit.Application.UseCases.Usuarios;
 using Nexit.Application.UseCases.SolicitudesEliminacion;
+using Nexit.Application.UseCases.Notificaciones;
+using Nexit.Application.UseCases.Historial;
 
 namespace Nexit.Application;
 
@@ -31,18 +33,26 @@ public static class DependencyInjection
         services.AddScoped<IEliminarProyectoUseCase, EliminarProyectoUseCase>();
         services.AddScoped<IAgregarSeguimientoProyectoUseCase, AgregarSeguimientoProyectoUseCase>();
         services.AddScoped<IConsultarCalendarioProyectosUseCase, ConsultarCalendarioProyectosUseCase>();
+        services.AddScoped<IConsultarPrioridadProyectosUseCase, ConsultarPrioridadProyectosUseCase>();
         services.AddScoped<IConsultarInformesUseCase, ConsultarInformesUseCase>();
         services.AddScoped<IGenerarInformeSnapshotUseCase, GenerarInformeSnapshotUseCase>();
         services.AddScoped<ICrearUsuarioUseCase, CrearUsuarioUseCase>();
         services.AddScoped<IActualizarUsuarioUseCase, ActualizarUsuarioUseCase>();
         services.AddScoped<IConsultarUsuariosUseCase, ConsultarUsuariosUseCase>();
         services.AddScoped<IEliminarUsuarioUseCase, EliminarUsuarioUseCase>();
+        services.AddScoped<IEliminarUsuariosInactivosUseCase, EliminarUsuariosInactivosUseCase>();
         services.AddScoped<ISolicitarEliminacionUseCase, SolicitarEliminacionUseCase>();
         services.AddScoped<IAprobarComoGerenteUseCase, AprobarComoGerenteUseCase>();
         services.AddScoped<IRechazarComoGerenteUseCase, RechazarComoGerenteUseCase>();
         services.AddScoped<IAprobarComoAdminUseCase, AprobarComoAdminUseCase>();
         services.AddScoped<IRechazarComoAdminUseCase, RechazarComoAdminUseCase>();
         services.AddScoped<IConsultarSolicitudesEliminacionUseCase, ConsultarSolicitudesEliminacionUseCase>();
+        services.AddScoped<IListarMisNotificacionesUseCase, ListarMisNotificacionesUseCase>();
+        services.AddScoped<IMarcarNotificacionLeidaUseCase, MarcarNotificacionLeidaUseCase>();
+        services.AddScoped<IConsultarHistorialCambiosUseCase, ConsultarHistorialCambiosUseCase>();
+        services.AddScoped<IMarcarColaboradorProveedorUseCase, MarcarColaboradorProveedorUseCase>();
+        services.AddScoped<IQuitarColaboradorProveedorUseCase, QuitarColaboradorProveedorUseCase>();
+        services.AddScoped<IListarMisProveedoresUseCase, ListarMisProveedoresUseCase>();
         return services;
     }
 }

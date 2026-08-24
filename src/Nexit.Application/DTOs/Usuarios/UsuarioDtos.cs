@@ -35,6 +35,13 @@ public class UsuarioResponseDto
     public string Rol { get; set; } = string.Empty;
     public string? Iniciales { get; set; }
     public bool Activo { get; set; }
+
+    /// <summary>
+    /// Cuándo se desactivó (null si está activa). El frontend puede usarlo para mostrar "se elimina
+    /// automáticamente el [FechaDesactivacion + 30 días]" -- ver docs/17-eliminacion-automatica-usuarios.md.
+    /// </summary>
+    public DateTime? FechaDesactivacion { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

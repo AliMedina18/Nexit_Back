@@ -282,6 +282,68 @@ namespace Nexit.Infrastructure.Migrations
                     b.ToTable("fases_proyecto", (string)null);
                 });
 
+            modelBuilder.Entity("Nexit.Core.Entities.HistorialCambio", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Accion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("accion");
+
+                    b.Property<string>("Campo")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("campo");
+
+                    b.Property<Guid>("EntidadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entidad_id");
+
+                    b.Property<DateTime>("Fecha")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("TipoEntidad")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo_entidad");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<string>("ValorAnterior")
+                        .HasColumnType("text")
+                        .HasColumnName("valor_anterior");
+
+                    b.Property<string>("ValorNuevo")
+                        .HasColumnType("text")
+                        .HasColumnName("valor_nuevo");
+
+                    b.HasKey("Id")
+                        .HasName("pk_historial_cambios");
+
+                    b.HasIndex("UsuarioId")
+                        .HasDatabaseName("ix_historial_cambios_usuario_id");
+
+                    b.HasIndex("TipoEntidad", "EntidadId", "Fecha")
+                        .HasDatabaseName("ix_historial_cambios_tipo_entidad_entidad_id_fecha");
+
+                    b.ToTable("historial_cambios", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_historial_cambios_tipo_entidad", "tipo_entidad IN ('proyecto', 'proveedor', 'cliente')");
+                        });
+                });
+
             modelBuilder.Entity("Nexit.Core.Entities.InformeSnapshot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -349,6 +411,74 @@ namespace Nexit.Infrastructure.Migrations
                     b.ToTable("informes_snapshot", null, t =>
                         {
                             t.HasCheckConstraint("ck_informes_snapshot_tipo", "tipo IN ('semanal', 'mensual')");
+                        });
+                });
+
+            modelBuilder.Entity("Nexit.Core.Entities.Notificacion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid?>("EntidadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entidad_id");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_creacion")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTime?>("FechaLeida")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_leida");
+
+                    b.Property<bool>("Leida")
+                        .HasColumnType("boolean")
+                        .HasColumnName("leida");
+
+                    b.Property<string>("Mensaje")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("mensaje");
+
+                    b.Property<Guid?>("SolicitudId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("solicitud_id");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("tipo");
+
+                    b.Property<string>("TipoEntidad")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo_entidad");
+
+                    b.Property<string>("Titulo")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("titulo");
+
+                    b.Property<Guid>("UsuarioDestinatarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_destinatario_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notificaciones");
+
+                    b.HasIndex("UsuarioDestinatarioId", "Leida")
+                        .HasDatabaseName("ix_notificaciones_usuario_destinatario_id_leida");
+
+                    b.ToTable("notificaciones", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notificaciones_tipo", "tipo IN ('solicitud_eliminacion_creada', 'solicitud_eliminacion_endosada', 'solicitud_eliminacion_decidida')");
                         });
                 });
 
@@ -580,6 +710,31 @@ namespace Nexit.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("ck_proveedor_adjuntos_tipo", "tipo IN ('link', 'file')");
                         });
+                });
+
+            modelBuilder.Entity("Nexit.Core.Entities.ProveedorColaborador", b =>
+                {
+                    b.Property<Guid>("ProveedorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proveedor_id");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<DateTime>("FechaAgregado")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_agregado")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("ProveedorId", "UsuarioId")
+                        .HasName("pk_proveedor_colaboradores");
+
+                    b.HasIndex("UsuarioId")
+                        .HasDatabaseName("ix_proveedor_colaboradores_usuario_id");
+
+                    b.ToTable("proveedor_colaboradores", (string)null);
                 });
 
             modelBuilder.Entity("Nexit.Core.Entities.ProveedorServicio", b =>
@@ -1085,6 +1240,10 @@ namespace Nexit.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("email");
 
+                    b.Property<DateTime?>("FechaDesactivacion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_desactivacion");
+
                     b.Property<string>("Iniciales")
                         .HasColumnType("text")
                         .HasColumnName("iniciales");
@@ -1118,6 +1277,73 @@ namespace Nexit.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("ck_usuarios_rol", "rol IN ('super_admin', 'admin', 'manager', 'miembro')");
                         });
+                });
+
+            modelBuilder.Entity("Nexit.Core.Entities.UsuarioEliminado", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Apellido")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("apellido");
+
+                    b.Property<Guid?>("EliminadoPorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("eliminado_por_id");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTime>("FechaAltaOriginal")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_alta_original");
+
+                    b.Property<DateTime?>("FechaDesactivacion")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_desactivacion");
+
+                    b.Property<DateTime>("FechaEliminacion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fecha_eliminacion")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Iniciales")
+                        .HasColumnType("text")
+                        .HasColumnName("iniciales");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("Rol")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("rol");
+
+                    b.Property<Guid>("UsuarioIdOriginal")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id_original");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usuarios_eliminados");
+
+                    b.HasIndex("UsuarioIdOriginal")
+                        .HasDatabaseName("ix_usuarios_eliminados_usuario_id_original");
+
+                    b.ToTable("usuarios_eliminados", (string)null);
                 });
 
             modelBuilder.Entity("Nexit.Core.Entities.Ciudad", b =>
@@ -1165,6 +1391,18 @@ namespace Nexit.Infrastructure.Migrations
                     b.Navigation("FaseProyecto");
                 });
 
+            modelBuilder.Entity("Nexit.Core.Entities.HistorialCambio", b =>
+                {
+                    b.HasOne("Nexit.Core.Entities.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_historial_cambios_usuarios_usuario_id");
+
+                    b.Navigation("Usuario");
+                });
+
             modelBuilder.Entity("Nexit.Core.Entities.InformeSnapshot", b =>
                 {
                     b.HasOne("Nexit.Core.Entities.Usuario", null)
@@ -1172,6 +1410,18 @@ namespace Nexit.Infrastructure.Migrations
                         .HasForeignKey("CreatedBy")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_informes_snapshot_usuarios_created_by");
+                });
+
+            modelBuilder.Entity("Nexit.Core.Entities.Notificacion", b =>
+                {
+                    b.HasOne("Nexit.Core.Entities.Usuario", "UsuarioDestinatario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioDestinatarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notificaciones_usuarios_usuario_destinatario_id");
+
+                    b.Navigation("UsuarioDestinatario");
                 });
 
             modelBuilder.Entity("Nexit.Core.Entities.Proveedor", b =>
@@ -1219,6 +1469,27 @@ namespace Nexit.Infrastructure.Migrations
                         .HasConstraintName("fk_proveedor_adjuntos_proveedores_proveedor_id");
 
                     b.Navigation("Proveedor");
+                });
+
+            modelBuilder.Entity("Nexit.Core.Entities.ProveedorColaborador", b =>
+                {
+                    b.HasOne("Nexit.Core.Entities.Proveedor", "Proveedor")
+                        .WithMany("Colaboradores")
+                        .HasForeignKey("ProveedorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_proveedor_colaboradores_proveedores_proveedor_id");
+
+                    b.HasOne("Nexit.Core.Entities.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_proveedor_colaboradores_usuarios_usuario_id");
+
+                    b.Navigation("Proveedor");
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("Nexit.Core.Entities.ProveedorServicio", b =>
@@ -1407,6 +1678,8 @@ namespace Nexit.Infrastructure.Migrations
             modelBuilder.Entity("Nexit.Core.Entities.Proveedor", b =>
                 {
                     b.Navigation("Adjuntos");
+
+                    b.Navigation("Colaboradores");
 
                     b.Navigation("Proyectos");
 

@@ -1,10 +1,21 @@
--- Esquema completo de la base de datos (tablas, columnas, llaves, índices) -- generado
+﻿-- Esquema completo de la base de datos (tablas, columnas, llaves, índices) -- generado
 -- automáticamente desde las migraciones de EF Core, no escrito a mano, para que nunca
 -- quede desactualizado en silencio. Si agregas una migración nueva, regenera este
 -- archivo así (desde la raíz del repo):
 --   dotnet ef migrations script --project src\Nexit.Infrastructure --startup-project src\Nexit.API --idempotent --output docs\schema\01_esquema_completo.sql
 -- Es idempotente: se puede correr sobre una base vacía o una que ya tenga algunas
 -- migraciones aplicadas, sin duplicar nada.
+--
+-- **Nota 2026-08-24:** este archivo ahora SÍ incluye `notificaciones`, `historial_cambios`
+-- y `proveedor_colaboradores` (migración `AddNotificacionesHistorialColaboradores`) -- pero
+-- para Supabase (producción) usa `docs/schema/07_notificaciones_historial_colaboradores.sql`
+-- en vez de este archivo completo, NO este. Este archivo, corrido tal cual contra Supabase,
+-- fallaría: como `usuarios_eliminados`/`fecha_desactivacion` se crearon a mano con
+-- `06_eliminacion_automatica_usuarios.sql` (no con una migración de EF), Supabase no tiene
+-- registrada esa migración en `__EFMigrationsHistory`, así que este script volvería a
+-- intentar crear esas dos cosas y fallaría porque ya existen. Este archivo sigue sirviendo
+-- para tu base local `nexit_dev` con `dotnet ef database update` (ahí nunca se corrió nada
+-- a mano, así que no hay ese choque) y como referencia de "cómo es el esquema completo hoy".
 
 CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
     migration_id character varying(150) NOT NULL,
@@ -1207,6 +1218,136 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260818015920_AddRbacFourTierRoles') THEN
     INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
     VALUES ('20260818015920_AddRbacFourTierRoles', '8.0.11');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    ALTER TABLE usuarios ADD fecha_desactivacion timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    CREATE TABLE historial_cambios (
+        id uuid NOT NULL DEFAULT (gen_random_uuid()),
+        tipo_entidad character varying(20) NOT NULL,
+        entidad_id uuid NOT NULL,
+        usuario_id uuid NOT NULL,
+        accion character varying(20) NOT NULL,
+        campo character varying(100),
+        valor_anterior text,
+        valor_nuevo text,
+        fecha timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_historial_cambios PRIMARY KEY (id),
+        CONSTRAINT ck_historial_cambios_tipo_entidad CHECK (tipo_entidad IN ('proyecto', 'proveedor', 'cliente')),
+        CONSTRAINT fk_historial_cambios_usuarios_usuario_id FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    CREATE TABLE notificaciones (
+        id uuid NOT NULL DEFAULT (gen_random_uuid()),
+        usuario_destinatario_id uuid NOT NULL,
+        tipo character varying(50) NOT NULL,
+        titulo character varying(255) NOT NULL,
+        mensaje text NOT NULL,
+        tipo_entidad character varying(20),
+        entidad_id uuid,
+        solicitud_id uuid,
+        leida boolean NOT NULL,
+        fecha_creacion timestamp with time zone NOT NULL DEFAULT (now()),
+        fecha_leida timestamp with time zone,
+        CONSTRAINT pk_notificaciones PRIMARY KEY (id),
+        CONSTRAINT ck_notificaciones_tipo CHECK (tipo IN ('solicitud_eliminacion_creada', 'solicitud_eliminacion_endosada', 'solicitud_eliminacion_decidida')),
+        CONSTRAINT fk_notificaciones_usuarios_usuario_destinatario_id FOREIGN KEY (usuario_destinatario_id) REFERENCES usuarios (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    CREATE TABLE proveedor_colaboradores (
+        proveedor_id uuid NOT NULL,
+        usuario_id uuid NOT NULL,
+        fecha_agregado timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_proveedor_colaboradores PRIMARY KEY (proveedor_id, usuario_id),
+        CONSTRAINT fk_proveedor_colaboradores_proveedores_proveedor_id FOREIGN KEY (proveedor_id) REFERENCES proveedores (id) ON DELETE CASCADE,
+        CONSTRAINT fk_proveedor_colaboradores_usuarios_usuario_id FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    CREATE TABLE usuarios_eliminados (
+        id uuid NOT NULL DEFAULT (gen_random_uuid()),
+        usuario_id_original uuid NOT NULL,
+        nombre character varying(255) NOT NULL,
+        apellido character varying(255) NOT NULL,
+        email character varying(255) NOT NULL,
+        rol character varying(20) NOT NULL,
+        iniciales text,
+        fecha_alta_original timestamp with time zone NOT NULL,
+        fecha_desactivacion timestamp with time zone,
+        fecha_eliminacion timestamp with time zone NOT NULL DEFAULT (now()),
+        eliminado_por_id uuid,
+        CONSTRAINT pk_usuarios_eliminados PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    CREATE INDEX ix_historial_cambios_tipo_entidad_entidad_id_fecha ON historial_cambios (tipo_entidad, entidad_id, fecha);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    CREATE INDEX ix_historial_cambios_usuario_id ON historial_cambios (usuario_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    CREATE INDEX ix_notificaciones_usuario_destinatario_id_leida ON notificaciones (usuario_destinatario_id, leida);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    CREATE INDEX ix_proveedor_colaboradores_usuario_id ON proveedor_colaboradores (usuario_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    CREATE INDEX ix_usuarios_eliminados_usuario_id_original ON usuarios_eliminados (usuario_id_original);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260824004948_AddNotificacionesHistorialColaboradores', '8.0.11');
     END IF;
 END $EF$;
 COMMIT;

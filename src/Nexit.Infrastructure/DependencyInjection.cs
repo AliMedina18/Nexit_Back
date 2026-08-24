@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nexit.Application.Services;
 using Nexit.Core.Interfaces;
+using Nexit.Infrastructure.BackgroundServices;
 using Nexit.Infrastructure.Data;
 using Nexit.Infrastructure.Repositories;
 using Nexit.Infrastructure.Services;
@@ -25,9 +26,15 @@ public static class DependencyInjection
         services.AddScoped<IInformesRepository, InformesRepository>();
         services.AddScoped<ICatalogosRepository, CatalogosRepository>();
         services.AddScoped<IUsuarioRepository, UsuarioRepository>();
+        services.AddScoped<IUsuarioEliminadoRepository, UsuarioEliminadoRepository>();
         services.AddScoped<IDominioCorreoPermitidoRepository, DominioCorreoPermitidoRepository>();
         services.AddScoped<ISolicitudEliminacionRepository, SolicitudEliminacionRepository>();
+        services.AddScoped<INotificacionRepository, NotificacionRepository>();
+        services.AddScoped<IHistorialCambioRepository, HistorialCambioRepository>();
+        services.AddScoped<IProveedorColaboradorRepository, ProveedorColaboradorRepository>();
         services.AddSingleton<IInformeExcelExporter, InformeExcelExporter>();
+        services.AddScoped<ISupabaseAuthAdminService, SupabaseAuthAdminService>();
+        services.AddHostedService<EliminacionAutomaticaUsuariosInactivosService>();
         return services;
     }
 }

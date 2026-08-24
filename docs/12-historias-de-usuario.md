@@ -174,6 +174,137 @@ Igual que HU-04: cero código nuevo en `Nexit_Back` — esto es 100% Supabase Au
 
 ---
 
+## HU-06 — Desactivar, reactivar y eliminar (con respaldo) a un miembro del equipo
+
+**Como** super administrador, **quiero** poder desactivar a alguien del sistema, reactivarlo si me equivoqué, y que se elimine solo después de 30 días desactivado (con un respaldo, no un borrado sin más), **para** dar de baja a alguien con margen de reacción y sin perder el rastro de quién era.
+
+Ver `docs/17-eliminacion-automatica-usuarios.md` para el diseño completo y la investigación de cómo lo resuelven otros productos (Microsoft Entra ID, GitLab, Facebook — todos con una ventana de 30 días, el mismo número que pediste).
+
+### Precondiciones
+- Quien ejecuta esto es `super_admin` (`UsuariosController` es exclusivo de ese rol — ver `docs/06`).
+
+### Flujo principal
+1. El super administrador edita a alguien (`PUT /api/usuarios/{id}`) y pone `Activo = false`. El backend guarda la fecha exacta de ese cambio (`FechaDesactivacion`) — arranca ahí el conteo de 30 días.
+2. Desde ese momento, la cuenta pierde acceso al sistema (el Auth Hook deja de darle un rol válido en su próximo inicio de sesión o renovación de token — hasta 1 hora de margen en el peor caso, ver `docs/17` sección 6) — no solo queda "desactivada en el papel", de verdad no puede usar el sistema.
+3. Si en cualquier momento antes de los 30 días alguien vuelve a poner `Activo = true`, el conteo se cancela por completo (`FechaDesactivacion` se limpia) y la cuenta recupera acceso normal.
+4. Si nadie la reactiva, al cumplirse los 30 días el proceso automático de `Nexit_Back` la elimina sola: guarda una copia completa en `usuarios_eliminados` (tabla de respaldo, no consultada por la aplicación normal) y borra la fila de `usuarios`.
+5. Alternativa al paso 4: el super administrador puede eliminarla de inmediato sin esperar, con `DELETE /api/usuarios/{id}` — mismo respaldo previo, pero queda registrado quién la eliminó (a diferencia de la automática, donde ese campo queda vacío).
+
+### Flujo alterno — la propia cuenta
+- Nadie puede desactivarse, quitarse el rol de super_admin, ni eliminarse a sí mismo (protección ya existente, ver `docs/06`) — evita que el sistema se quede sin nadie que lo pueda administrar.
+
+### Criterios de aceptación
+- Reactivar antes de los 30 días cancela la eliminación programada por completo, no la pausa ni la reduce.
+- Una cuenta desactivada no puede usar ningún endpoint del sistema, no solo los de administración — el bloqueo aplica parejo, sin importar el rol de esa cuenta.
+- Antes de cualquier eliminación (automática o manual) siempre queda un respaldo en `usuarios_eliminados` — nunca se borra sin dejar rastro.
+- Eliminar (automática o manual) también intenta eliminar la cuenta de Supabase Auth correspondiente, para que no le quede ningún camino de acceso.
+
+### Notas técnicas
+- Sin pantalla nueva que diseñar para el paso 4 (el automático) — no es un flujo que el frontend dispare, corre solo dentro del backend.
+- El frontend puede mostrar, en la pantalla de usuarios, algo como "se elimina automáticamente el [FechaDesactivacion + 30 días]" para cualquier cuenta desactivada — el campo `FechaDesactivacion` ya viene en la respuesta de `GET /api/usuarios`.
+
+### Estado del backend para esta historia: 🟡 Backend listo en código, pendiente de un factor externo
+
+El código ya está completo, compilado y con pruebas (127 pruebas totales — 120 pasan sin necesitar Docker/base de datos real, incluidas las nuevas de esta historia; las 7 restantes son funcionales que sí necesitan Docker, mismas de siempre, no relacionadas con esto). Lo que falta es puramente externo — dos scripts SQL por correr en tu Supabase real (ver `docs/17`, sección 7): `docs/schema/06_eliminacion_automatica_usuarios.sql` (columna nueva + tabla de respaldo) y volver a correr `docs/schema/03_auth_hook_custom_claims.sql` (se actualizó para revisar `activo`). Opcional: configurar la Service Role Key para que la cuenta de Supabase Auth también se elimine sola (si no, el perfil de negocio sí se elimina igual, solo queda pendiente borrar la cuenta de Auth a mano). En cuanto corras esos dos scripts, esta historia pasa a ✅.
+
+---
+
+## HU-07 — Cerrar sesión
+
+**Como** cualquier persona con cuenta en el sistema, **quiero** poder cerrar sesión desde el botón correspondiente, **para** dejar de tener acceso desde ese dispositivo cuando termino de usar el sistema.
+
+Ver `docs/10-correos-autenticacion-y-guia-frontend.md`, sección 2.3, para el detalle técnico completo dirigido al frontend.
+
+### Precondiciones
+- La persona tiene una sesión activa (inició sesión con HU-01 o HU-02).
+
+### Flujo principal
+1. La persona hace clic en "cerrar sesión". El frontend llama a `supabase.auth.signOut()` con `scope: 'local'` — termina solo la sesión de ese navegador/dispositivo, deja las demás activas (por ejemplo, si también tiene sesión abierta en el celular, esa no se cierra).
+2. Supabase revoca de inmediato el *refresh token* de esa sesión y borra la sesión guardada en el navegador.
+3. El frontend redirige a la pantalla de inicio de sesión.
+
+### Flujo alterno — cerrar sesión en todos los dispositivos
+- Opcional, no obligatorio para la primera versión: un botón aparte, por ejemplo dentro de la configuración de la cuenta ("cerrar sesión en todos lados"), que llame a `supabase.auth.signOut()` con `scope: 'global'` en vez de `'local'` — termina todas las sesiones de esa cuenta, en cualquier dispositivo.
+
+### Criterios de aceptación
+- El botón principal de "cerrar sesión" usa `scope: 'local'` (no cierra otros dispositivos sin que la persona lo pida explícitamente).
+- Después de cerrar sesión, el *refresh token* de esa sesión queda revocado de inmediato — no se puede volver a renovar el token desde ese dispositivo sin iniciar sesión de nuevo.
+
+### Notas técnicas
+- **Limitación real, verificada en la documentación oficial de Supabase (no una suposición):** cerrar sesión no invalida al instante el *access token* que ya se entregó — ese JWT sigue siendo válido hasta que expira por su cuenta (hasta 1 hora, según la configuración del proyecto). Es el mismo límite ya documentado en `docs/17-eliminacion-automatica-usuarios.md` (sección 6) para cuando se desactiva a alguien: no es un caso aparte, es cómo está construido Supabase Auth (tokens firmados, sin verificar contra una sesión viva en cada petición). Para una persona que simplemente terminó de usar el sistema esto no representa ningún riesgo real. La recomendación concreta para acortar esa ventana en cualquier escenario (logout, desactivación, o token comprometido) está en `docs/17`, sección 6.
+- No hace falta ningún endpoint nuevo en `Nexit_Back` para esto — es una llamada 100% del lado de Supabase, igual que el resto de la autenticación (HU-01, HU-02, HU-04).
+
+### Estado del backend para esta historia: ✅ Completo
+
+Cero código nuevo en `Nexit_Back` — cerrar sesión es, igual que iniciar sesión, una operación que resuelve Supabase directamente desde el frontend. No hay ningún factor externo pendiente de tu parte para esta historia.
+
+---
+
+## HU-08 — Enterarme de las solicitudes de eliminación, ver el historial de cambios y marcar en qué proveedores trabajo
+
+**Como** cualquier persona con cuenta en el sistema, **quiero** (1) recibir una notificación cuando alguien me pida eliminar algo que lidero, o cuando alguien más solicite eliminar un cliente/proveedor/proyecto (si soy administradora), (2) poder ver quién editó qué de un proyecto/proveedor/cliente y cuándo, y (3) poder marcar los proveedores con los que trabajo para tener mi propia vista filtrada, **para** no tener que entrar a revisar activamente si hay algo pendiente, saber quién hizo qué cambio, y encontrar rápido "mis" proveedores entre todos los que existen.
+
+Ver `docs/20-notificaciones-historial-y-colaboradores.md` para el diseño completo.
+
+### Flujo principal — notificaciones
+1. Alguien solicita eliminar un cliente, proveedor o proyecto (flujo ya existente, `docs/06`).
+2. El sistema genera automáticamente una notificación para quien corresponda según la etapa (el gerente responsable si el proyecto tiene uno distinto de quien solicita, o todos los administradores activos si va directo a esa etapa) — incluyendo, si ya había otras solicitudes pendientes para esa misma entidad, cuántas van en total.
+3. La persona ve su bandeja (`GET /api/notificaciones`) y puede marcar cada una como leída (`PUT /api/notificaciones/{id}/marcar-leida`) — nunca se borran, quedan como historial permanente.
+4. Cuando un administrador decide (aprobar/rechazar), se notifica a quien solicitó, y **automáticamente se resuelven también todas las demás solicitudes que seguían pendientes para esa misma entidad** (el administrador decide una vez por la entidad, no solicitud por solicitud), notificando a cada solicitante por separado.
+
+### Flujo principal — historial de cambios
+1. Alguien edita un proyecto, proveedor o cliente.
+2. El sistema registra automáticamente, por cada campo que cambió, el valor de antes y el de después, quién lo hizo y cuándo.
+3. Cualquier persona autenticada puede consultar ese historial (`GET /api/historial/{tipoEntidad}/{entidadId}`), más reciente primero.
+
+### Flujo principal — "trabajando con este proveedor"
+1. Una persona entra a un proveedor y se marca a sí misma como colaboradora (`POST /api/proveedores/{id}/colaboradores`) — cualquiera puede marcarse, no solo un administrador, y varias personas pueden estar marcadas en el mismo proveedor a la vez.
+2. Esa marca es pública: en el listado de proveedores se ve quién está trabajando con cada uno (avatares/iniciales).
+3. La persona puede filtrar a solo "sus" proveedores (`GET /api/proveedores/mios`) y quitarse en cualquier momento (`DELETE /api/proveedores/{id}/colaboradores`).
+
+### Criterios de aceptación
+- Nadie puede marcar como leída una notificación que no es suya (403).
+- Resolver una solicitud de eliminación como administrador resuelve también cualquier otra pendiente para la misma entidad, con el mismo resultado y comentario, notificando a cada solicitante individualmente.
+- El historial de un registro nunca se sobreescribe: cada edición agrega filas nuevas, no reemplaza las anteriores.
+- Marcarse dos veces como colaborador del mismo proveedor no duplica nada.
+
+### Notas técnicas
+- Esquema: tablas nuevas `notificaciones`, `historial_cambios`, `proveedor_colaboradores` — ver `docs/schema/07_notificaciones_historial_colaboradores.sql` (Supabase) y la migración de EF Core `AddNotificacionesHistorialColaboradores` (base local).
+- Quedaron explícitamente fuera de esta historia, pendientes de más definición: el sistema de prioridad/sugerencias de a qué proveedor/cliente atender primero, y qué mejorar específicamente del informe semanal (que ya existe, `docs/07`).
+
+### Estado del backend para esta historia: ✅ Completo
+
+170 pruebas en total (163 pasan, 7 dependen de Docker en este entorno — nada nuevo), 25 nuevas para esta historia, cero regresiones.
+
+---
+
+## HU-09 — Ver a qué proyecto atender primero
+
+**Como** cualquier persona con acceso a proyectos, **quiero** ver una lista de mis proyectos activos ordenada por qué tan urgente es cada uno, con la razón de por qué quedó en ese lugar, **para** no tener que revisar proyecto por proyecto para darme cuenta de cuál necesita atención ya.
+
+Ver `docs/21-priorizacion-sugerencias-investigacion-y-propuesta.md` para la investigación y `docs/22-sistema-prioridad-proyectos.md` para el diseño de lo construido.
+
+### Flujo principal
+1. La persona entra a la vista de "prioridad" (o algo similar en el menú).
+2. El frontend llama a `GET /api/proyectos/prioridad`.
+3. Ve la lista de proyectos activos (los ya finalizados/cancelados/facturados no aparecen), ordenada de más a menos urgente, cada uno con su puntaje y la lista de razones concretas (ej. "el evento es en 3 días", "la propuesta todavía no se ha enviado").
+
+### Criterios de aceptación
+- Un proyecto en estado terminal (Finalizado, Cancelado, No ejecutado, Facturado) nunca aparece en esta lista.
+- Cada proyecto siempre viene con al menos su puntaje; si el puntaje es 0, la lista de razones puede venir vacía (no hay ninguna señal de urgencia).
+- Los proyectos con más puntaje aparecen primero.
+
+### Notas técnicas
+- Es Nivel 1 de la propuesta de `docs/21` — reglas simples, sin IA, tal como se pidió explícitamente probar primero.
+- Los pesos de cada señal son un punto de partida, pensados para ajustarse con casos reales más adelante (ver `docs/22`).
+- Todavía no cubre proveedores ni clientes — solo proyectos.
+
+### Estado del backend para esta historia: ✅ Completo
+
+191 pruebas en total (184 pasan, 7 dependen de Docker en este entorno — nada nuevo), 21 nuevas para esta historia, cero regresiones.
+
+---
+
 ## Nota de referencia (no es una historia, es contexto para cuando exista el Supabase real)
 
 La usuaria mencionó, al describir HU-01, una futura cuenta de administrador: `analistacompras@agencianextmkt.com` (dominio ya permitido). Todavía no se ha invitado ni registrado en ningún lado — queda anotada aquí solo como referencia para cuando se ejecute el alta real de usuarios (`docs/09`, secciones 7-9), no requiere ninguna acción en este documento.
@@ -182,4 +313,4 @@ La usuaria mencionó, al describir HU-01, una futura cuenta de administrador: `a
 
 Siguiendo la estructura de `docs/11`: crear/editar/eliminar un cliente, crear/editar un proveedor (con adjuntos), crear/editar un proyecto (con equipo, proveedores asociados y bitácora de seguimiento, incluida la asignación del gerente responsable), ver el calendario, generar y exportar un informe, administrar catálogos, dar de alta un usuario, y el flujo completo de solicitud/aprobación/rechazo de eliminación (desde las tres perspectivas: quien solicita, el gerente que endosa, el admin que decide).
 
-Cada una de esas se escribirá con el mismo cierre de "Estado del backend" de arriba. Adelantando el veredicto según lo que ya se verificó en `docs/11` y `docs/10` (para no repetir la revisión historia por historia): casi todo el sistema — clientes, proveedores + adjuntos, proyectos + equipo + seguimiento + gerente, calendario, catálogos, informes, usuarios, y las cuatro decisiones del flujo de solicitudes de eliminación (solicitar, endosar como gerente, aprobar/rechazar como admin) — ya tiene el código, la validación y el control de permisos completos y probados (120/120 pruebas), así que esas historias deberían cerrar en ✅ o 🟡 (🟡 solo donde dependan de que exista el Supabase real, como los ejemplos de arriba). Las únicas piezas que hoy cerrarían en 🔴 (falta backend, no es solo un factor externo) son las que ya quedaron anotadas en `docs/10`, sección 5: un endpoint que invite y registre a alguien en un solo paso (hoy son dos acciones manuales separadas), y notificaciones (de cualquier tipo, no solo correo) para el flujo de solicitudes de eliminación — hoy nadie se entera de una solicitud nueva sin entrar a revisar activamente. Si alguna de esas dos te hace falta para una historia futura, se marca 🔴 y se prioriza escribir ese backend antes de esa pantalla, tal como pediste.
+Cada una de esas se escribirá con el mismo cierre de "Estado del backend" de arriba. Adelantando el veredicto según lo que ya se verificó en `docs/11` y `docs/10` (para no repetir la revisión historia por historia): casi todo el sistema — clientes, proveedores + adjuntos, proyectos + equipo + seguimiento + gerente, calendario, catálogos, informes, usuarios, las cuatro decisiones del flujo de solicitudes de eliminación (solicitar, endosar como gerente, aprobar/rechazar como admin), y desde HU-08 también notificaciones, historial de cambios y "mis proveedores" — ya tiene el código, la validación y el control de permisos completos y probados (163/170 pruebas, el resto depende de Docker en este entorno), así que esas historias deberían cerrar en ✅ o 🟡 (🟡 solo donde dependan de que exista el Supabase real, como los ejemplos de arriba). La única pieza que hoy cerraría en 🔴 (falta backend, no es solo un factor externo) es la que quedó anotada en `docs/10`, sección 5: un endpoint que invite y registre a alguien en un solo paso (hoy son dos acciones manuales separadas). Si te hace falta para una historia futura, se marca 🔴 y se prioriza escribir ese backend antes de esa pantalla, tal como pediste. También quedan pendientes de más definición (no de código ya identificado) el sistema de prioridad/sugerencias y las mejoras al informe semanal — ver `docs/20`.

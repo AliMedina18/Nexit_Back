@@ -20,7 +20,7 @@ public class ProveedoresTests
         var categoriaId = Guid.NewGuid();
         catalogos.Setup(x => x.GetPaisAsync(paisId, It.IsAny<CancellationToken>())).ReturnsAsync(new Pais { Id = paisId, Nombre = "Colombia" });
         catalogos.Setup(x => x.GetCategoriaAsync(categoriaId, It.IsAny<CancellationToken>())).ReturnsAsync(new CategoriaProveedor { Id = categoriaId, Nombre = "Hotel" });
-        var result = await new CrearProveedorUseCase(proveedores.Object, catalogos.Object, Mock.Of<IUnitOfWork>()).ExecuteAsync(new CreateProveedorDto { Nombre = "Venue Central", PaisId = paisId, CategoriaId = categoriaId }, Guid.NewGuid());
+        var result = await new CrearProveedorUseCase(proveedores.Object, catalogos.Object, Mock.Of<IHistorialCambioRepository>(), Mock.Of<IUnitOfWork>()).ExecuteAsync(new CreateProveedorDto { Nombre = "Venue Central", PaisId = paisId, CategoriaId = categoriaId }, Guid.NewGuid());
         Assert.Equal("Venue Central", result.Nombre);
         proveedores.Verify(x => x.AddAsync(It.IsAny<Proveedor>(), It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -35,7 +35,7 @@ public class ProveedoresTests
         catalogos.Setup(x => x.GetPaisAsync(paisId, It.IsAny<CancellationToken>())).ReturnsAsync(new Pais { Id = paisId });
         catalogos.Setup(x => x.GetCategoriaAsync(categoriaId, It.IsAny<CancellationToken>())).ReturnsAsync(new CategoriaProveedor { Id = categoriaId });
         catalogos.Setup(x => x.GetRegionAsync(regionId, It.IsAny<CancellationToken>())).ReturnsAsync(new Region { Id = regionId, PaisId = Guid.NewGuid() });
-        await Assert.ThrowsAsync<BusinessRuleException>(() => new CrearProveedorUseCase(Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IUnitOfWork>()).ExecuteAsync(new CreateProveedorDto { Nombre = "Venue", PaisId = paisId, CategoriaId = categoriaId, RegionId = regionId }, Guid.NewGuid()));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => new CrearProveedorUseCase(Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IHistorialCambioRepository>(), Mock.Of<IUnitOfWork>()).ExecuteAsync(new CreateProveedorDto { Nombre = "Venue", PaisId = paisId, CategoriaId = categoriaId, RegionId = regionId }, Guid.NewGuid()));
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class ProveedoresTests
         catalogos.Setup(x => x.GetPaisAsync(paisId, It.IsAny<CancellationToken>())).ReturnsAsync(new Pais { Id = paisId });
         catalogos.Setup(x => x.GetCategoriaAsync(categoriaId, It.IsAny<CancellationToken>())).ReturnsAsync(new CategoriaProveedor { Id = categoriaId });
 
-        await new ActualizarProveedorUseCase(repository.Object, catalogos.Object, unitOfWork.Object).ExecuteAsync(new UpdateProveedorDto { Id = proveedorId, Nombre = "Venue Central Renovado", PaisId = paisId, CategoriaId = categoriaId }, editorId);
+        await new ActualizarProveedorUseCase(repository.Object, catalogos.Object, Mock.Of<IHistorialCambioRepository>(), unitOfWork.Object).ExecuteAsync(new UpdateProveedorDto { Id = proveedorId, Nombre = "Venue Central Renovado", PaisId = paisId, CategoriaId = categoriaId }, editorId);
 
         Assert.Equal(editorId, proveedor.UpdatedBy);
         Assert.NotNull(proveedor.UpdatedAt);

@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -58,11 +59,19 @@ try
     // de solicitudes de eliminación (SolicitudesEliminacionController) en vez de este atajo.
     bool HasRole(System.Security.Claims.ClaimsPrincipal user, string role) =>
         user.IsInRole(role) || user.HasClaim("app_role", role) || user.HasClaim("user_role", role);
+    // Eliminación automática de usuarios inactivos (ver docs/17-eliminacion-automatica-usuarios.md):
+    // el Auth Hook agrega el claim "user_active"="false" únicamente cuando usuarios.activo es false
+    // -- la AUSENCIA del claim se trata como activa (fail-open), a propósito, para no invalidar de
+    // golpe todos los tokens ya emitidos antes de desplegar este cambio; se cierra solo, en cuanto
+    // esos tokens vencen y se renuevan (hasta ~1 hora). Una cuenta recién desactivada conserva
+    // acceso durante el resto de la vida de su token actual -- es la única ventana conocida.
+    bool IsActive(System.Security.Claims.ClaimsPrincipal user) => !user.HasClaim("user_active", "false");
     builder.Services.AddAuthorization(options =>
     {
-        options.AddPolicy("SuperAdminOnly", policy => policy.RequireAuthenticatedUser().RequireAssertion(context => HasRole(context.User, "super_admin")));
+        options.DefaultPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().RequireAssertion(context => IsActive(context.User)).Build();
+        options.AddPolicy("SuperAdminOnly", policy => policy.RequireAuthenticatedUser().RequireAssertion(context => IsActive(context.User) && HasRole(context.User, "super_admin")));
         options.AddPolicy("AdminOrAbove", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
-            HasRole(context.User, "admin") || HasRole(context.User, "super_admin")));
+            IsActive(context.User) && (HasRole(context.User, "admin") || HasRole(context.User, "super_admin"))));
     });
     var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
     if (allowedOrigins.Length == 0 && !builder.Environment.IsDevelopment()) throw new InvalidOperationException("Configure Cors:AllowedOrigins for production.");

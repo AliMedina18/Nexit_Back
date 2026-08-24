@@ -24,7 +24,7 @@ public class ProyectosTests
         catalogos.Setup(x => x.GetEstadoAsync(estadoId, It.IsAny<CancellationToken>())).ReturnsAsync(new EstadoProyecto { Id = estadoId });
         proveedores.Setup(x => x.GetByIdAsync(proveedorId, It.IsAny<CancellationToken>())).ReturnsAsync(new Proveedor { Id = proveedorId });
 
-        var result = await new CrearProyectoUseCase(proyectos.Object, clientes.Object, proveedores.Object, catalogos.Object, Mock.Of<IUnitOfWork>()).ExecuteAsync(
+        var result = await new CrearProyectoUseCase(proyectos.Object, clientes.Object, proveedores.Object, catalogos.Object, Mock.Of<IHistorialCambioRepository>(), Mock.Of<IUnitOfWork>()).ExecuteAsync(
             new CrearProyectoDto { Nombre = "Lanzamiento", ClienteId = clienteId, EstadoId = estadoId, Equipo = [new ProyectoEquipoDto { Nombre = "Ana", Rol = "Ejecutivo" }], ProveedorIds = [proveedorId] }, Guid.NewGuid(), Roles.Admin);
 
         Assert.Equal("Lanzamiento", result.Nombre);
@@ -38,7 +38,7 @@ public class ProyectosTests
         var catalogos = new Mock<ICatalogosRepository>();
         catalogos.Setup(x => x.GetEstadoAsync(estadoId, It.IsAny<CancellationToken>())).ReturnsAsync((EstadoProyecto?)null);
 
-        await Assert.ThrowsAsync<BusinessRuleException>(() => new CrearProyectoUseCase(Mock.Of<IProyectoRepository>(), Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IUnitOfWork>())
+        await Assert.ThrowsAsync<BusinessRuleException>(() => new CrearProyectoUseCase(Mock.Of<IProyectoRepository>(), Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IHistorialCambioRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearProyectoDto { Nombre = "Lanzamiento", EstadoId = estadoId }, Guid.NewGuid(), Roles.Admin));
     }
 
@@ -71,7 +71,7 @@ public class ProyectosTests
         proyectos.Setup(x => x.GetByIdAsync(proyectoId, It.IsAny<CancellationToken>())).ReturnsAsync(proyecto);
         catalogos.Setup(x => x.GetEstadoAsync(estadoId, It.IsAny<CancellationToken>())).ReturnsAsync(new EstadoProyecto { Id = estadoId });
 
-        await new ActualizarProyectoUseCase(proyectos.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, unitOfWork.Object)
+        await new ActualizarProyectoUseCase(proyectos.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IHistorialCambioRepository>(), unitOfWork.Object)
             .ExecuteAsync(new ActualizarProyectoDto { Id = proyectoId, Nombre = "Lanzamiento Renovado", EstadoId = estadoId }, editorId, Roles.Admin);
 
         Assert.Equal(editorId, proyecto.UpdatedBy);
@@ -86,7 +86,7 @@ public class ProyectosTests
         catalogos.Setup(x => x.GetEstadoAsync(estadoId, It.IsAny<CancellationToken>())).ReturnsAsync(new EstadoProyecto { Id = estadoId });
         var gerenteId = Guid.NewGuid();
 
-        var result = await new CrearProyectoUseCase(Mock.Of<IProyectoRepository>(), Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IUnitOfWork>())
+        var result = await new CrearProyectoUseCase(Mock.Of<IProyectoRepository>(), Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IHistorialCambioRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearProyectoDto { Nombre = "Lanzamiento", EstadoId = estadoId }, gerenteId, Roles.Manager);
 
         Assert.Equal(gerenteId, result.GerenteId);
@@ -99,7 +99,7 @@ public class ProyectosTests
         var estadoId = Guid.NewGuid();
         catalogos.Setup(x => x.GetEstadoAsync(estadoId, It.IsAny<CancellationToken>())).ReturnsAsync(new EstadoProyecto { Id = estadoId });
 
-        var result = await new CrearProyectoUseCase(Mock.Of<IProyectoRepository>(), Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IUnitOfWork>())
+        var result = await new CrearProyectoUseCase(Mock.Of<IProyectoRepository>(), Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IHistorialCambioRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearProyectoDto { Nombre = "Lanzamiento", EstadoId = estadoId }, Guid.NewGuid(), Roles.Miembro);
 
         Assert.Null(result.GerenteId);
@@ -113,7 +113,7 @@ public class ProyectosTests
         catalogos.Setup(x => x.GetEstadoAsync(estadoId, It.IsAny<CancellationToken>())).ReturnsAsync(new EstadoProyecto { Id = estadoId });
         var elegidoGerenteId = Guid.NewGuid();
 
-        var result = await new CrearProyectoUseCase(Mock.Of<IProyectoRepository>(), Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IUnitOfWork>())
+        var result = await new CrearProyectoUseCase(Mock.Of<IProyectoRepository>(), Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IHistorialCambioRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearProyectoDto { Nombre = "Lanzamiento", EstadoId = estadoId, GerenteId = elegidoGerenteId }, Guid.NewGuid(), Roles.Admin);
 
         Assert.Equal(elegidoGerenteId, result.GerenteId);
@@ -130,7 +130,7 @@ public class ProyectosTests
         proyectos.Setup(x => x.GetByIdAsync(proyectoId, It.IsAny<CancellationToken>())).ReturnsAsync(proyecto);
         catalogos.Setup(x => x.GetEstadoAsync(estadoId, It.IsAny<CancellationToken>())).ReturnsAsync(new EstadoProyecto { Id = estadoId });
 
-        await Assert.ThrowsAsync<ForbiddenOperationException>(() => new ActualizarProyectoUseCase(proyectos.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IUnitOfWork>())
+        await Assert.ThrowsAsync<ForbiddenOperationException>(() => new ActualizarProyectoUseCase(proyectos.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IHistorialCambioRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new ActualizarProyectoDto { Id = proyectoId, Nombre = "Lanzamiento", EstadoId = estadoId, GerenteId = Guid.NewGuid() }, Guid.NewGuid(), Roles.Manager));
     }
 
@@ -147,7 +147,7 @@ public class ProyectosTests
         proyectos.Setup(x => x.GetByIdAsync(proyectoId, It.IsAny<CancellationToken>())).ReturnsAsync(proyecto);
         catalogos.Setup(x => x.GetEstadoAsync(estadoId, It.IsAny<CancellationToken>())).ReturnsAsync(new EstadoProyecto { Id = estadoId });
 
-        var result = await new ActualizarProyectoUseCase(proyectos.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, unitOfWork.Object)
+        var result = await new ActualizarProyectoUseCase(proyectos.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), catalogos.Object, Mock.Of<IHistorialCambioRepository>(), unitOfWork.Object)
             .ExecuteAsync(new ActualizarProyectoDto { Id = proyectoId, Nombre = "Lanzamiento", EstadoId = estadoId, GerenteId = nuevoGerenteId }, Guid.NewGuid(), Roles.Admin);
 
         Assert.Equal(nuevoGerenteId, result.GerenteId);

@@ -26,6 +26,10 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
     public DbSet<ProyectoSeguimiento> ProyectoSeguimientos => Set<ProyectoSeguimiento>();
     public DbSet<InformeSnapshot> InformesSnapshot => Set<InformeSnapshot>();
     public DbSet<SolicitudEliminacion> SolicitudesEliminacion => Set<SolicitudEliminacion>();
+    public DbSet<UsuarioEliminado> UsuariosEliminados => Set<UsuarioEliminado>();
+    public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
+    public DbSet<HistorialCambio> HistorialCambios => Set<HistorialCambio>();
+    public DbSet<ProveedorColaborador> ProveedorColaboradores => Set<ProveedorColaborador>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -40,6 +44,18 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.HasIndex(x => x.Email).IsUnique();
             entity.Property(x => x.Email).HasMaxLength(255);
             entity.Property(x => x.Rol).HasDefaultValue("miembro"); entity.Property(x => x.Activo).HasDefaultValue(true); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()"); entity.Property(x => x.UpdatedAt).HasDefaultValueSql("now()");
+        });
+        modelBuilder.Entity<UsuarioEliminado>(entity =>
+        {
+            entity.ToTable("usuarios_eliminados");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(x => x.Nombre).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Apellido).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Rol).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.FechaEliminacion).HasDefaultValueSql("now()");
+            entity.HasIndex(x => x.UsuarioIdOriginal);
         });
         modelBuilder.Entity<Pais>(entity =>
         {
@@ -186,6 +202,39 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.HasOne(x => x.GerenteResponsable).WithMany().HasForeignKey(x => x.GerenteResponsableId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.AprobadoPorGerente).WithMany().HasForeignKey(x => x.AprobadoPorGerenteId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.RevisadoPor).WithMany().HasForeignKey(x => x.RevisadoPorId).OnDelete(DeleteBehavior.SetNull);
+        });
+        modelBuilder.Entity<Notificacion>(entity =>
+        {
+            entity.ToTable("notificaciones", t => t.HasCheckConstraint("ck_notificaciones_tipo",
+                "tipo IN ('solicitud_eliminacion_creada', 'solicitud_eliminacion_endosada', 'solicitud_eliminacion_decidida')"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(x => x.Tipo).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Titulo).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.TipoEntidad).HasMaxLength(20);
+            entity.Property(x => x.FechaCreacion).HasDefaultValueSql("now()");
+            entity.HasIndex(x => new { x.UsuarioDestinatarioId, x.Leida });
+            entity.HasOne(x => x.UsuarioDestinatario).WithMany().HasForeignKey(x => x.UsuarioDestinatarioId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<HistorialCambio>(entity =>
+        {
+            entity.ToTable("historial_cambios", t => t.HasCheckConstraint("ck_historial_cambios_tipo_entidad", "tipo_entidad IN ('proyecto', 'proveedor', 'cliente')"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(x => x.TipoEntidad).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Accion).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Campo).HasMaxLength(100);
+            entity.Property(x => x.Fecha).HasDefaultValueSql("now()");
+            entity.HasIndex(x => new { x.TipoEntidad, x.EntidadId, x.Fecha });
+            entity.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ProveedorColaborador>(entity =>
+        {
+            entity.ToTable("proveedor_colaboradores");
+            entity.HasKey(x => new { x.ProveedorId, x.UsuarioId });
+            entity.Property(x => x.FechaAgregado).HasDefaultValueSql("now()");
+            entity.HasOne(x => x.Proveedor).WithMany(x => x.Colaboradores).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

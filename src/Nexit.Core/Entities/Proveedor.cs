@@ -23,4 +23,6 @@ public class Proveedor : BaseEntity
     public ICollection<ProveedorServicio> Servicios { get; set; } = new List<ProveedorServicio>();
     public ICollection<ProveedorAdjunto> Adjuntos { get; set; } = new List<ProveedorAdjunto>();
     public ICollection<ProyectoProveedor> Proyectos { get; set; } = new List<ProyectoProveedor>();
+    /// <summary>Quiénes se marcaron "trabajando con este proveedor" -- ver <see cref="ProveedorColaborador"/> y docs/19.</summary>
+    public ICollection<ProveedorColaborador> Colaboradores { get; set; } = new List<ProveedorColaborador>();
 }

@@ -1,11 +1,15 @@
 using Nexit.Application.DTOs.SolicitudesEliminacion;
+using Nexit.Application.UseCases.Notificaciones;
+using Nexit.Core.Constants;
 using Nexit.Core.Entities;
 using Nexit.Core.Exceptions;
 using Nexit.Core.Interfaces;
 
 namespace Nexit.Application.UseCases.SolicitudesEliminacion;
 
-public class SolicitarEliminacionUseCase(ISolicitudEliminacionRepository solicitudes, IProyectoRepository proyectos, IUnitOfWork unitOfWork) : ISolicitarEliminacionUseCase
+public class SolicitarEliminacionUseCase(
+    ISolicitudEliminacionRepository solicitudes, IProyectoRepository proyectos, IUsuarioRepository usuarios,
+    INotificacionRepository notificaciones, IUnitOfWork unitOfWork) : ISolicitarEliminacionUseCase
 {
     public async Task<SolicitudEliminacionResponseDto> ExecuteAsync(CrearSolicitudEliminacionDto input, Guid solicitanteId, CancellationToken cancellationToken = default)
     {
@@ -29,12 +33,30 @@ public class SolicitarEliminacionUseCase(ISolicitudEliminacionRepository solicit
             Motivo = input.Motivo, Estado = estado, GerenteResponsableId = gerenteResponsableId
         };
         await solicitudes.AddAsync(solicitud, cancellationToken);
+
+        if (estado == "pendiente_gerente")
+        {
+            await notificaciones.AddAsync(NotificacionFactory.SolicitudCreadaParaGerente(gerenteResponsableId!.Value, solicitud), cancellationToken);
+        }
+        else
+        {
+            // Cuántas solicitudes pendientes ya existían para esta misma entidad, para que el
+            // administrador vea de una vez cuántas personas la están pidiendo (docs/19) -- +1 porque
+            // esta que se acaba de crear también cuenta, y GetOtrasPendientes... la excluye a propósito.
+            var totalPendientes = (await solicitudes.GetOtrasPendientesPorEntidadAsync(input.TipoEntidad, input.EntidadId, solicitud.Id, cancellationToken)).Count + 1;
+            foreach (var adminId in await IdsAdministradoresAsync(usuarios, cancellationToken))
+                await notificaciones.AddAsync(NotificacionFactory.SolicitudCreadaParaAdmin(adminId, solicitud, totalPendientes), cancellationToken);
+        }
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return SolicitudEliminacionMapper.ToResponse(solicitud);
     }
+
+    internal static async Task<IReadOnlyList<Guid>> IdsAdministradoresAsync(IUsuarioRepository usuarios, CancellationToken ct) =>
+        (await usuarios.GetAllAsync(ct)).Where(u => u.Activo && (u.Rol == Roles.Admin || u.Rol == Roles.SuperAdmin)).Select(u => u.Id).ToList();
 }
 
-public class AprobarComoGerenteUseCase(ISolicitudEliminacionRepository solicitudes, IUnitOfWork unitOfWork) : IAprobarComoGerenteUseCase
+public class AprobarComoGerenteUseCase(ISolicitudEliminacionRepository solicitudes, IUsuarioRepository usuarios, INotificacionRepository notificaciones, IUnitOfWork unitOfWork) : IAprobarComoGerenteUseCase
 {
     public async Task<SolicitudEliminacionResponseDto> ExecuteAsync(Guid solicitudId, Guid gerenteId, CancellationToken cancellationToken = default)
     {
@@ -45,12 +67,14 @@ public class AprobarComoGerenteUseCase(ISolicitudEliminacionRepository solicitud
         solicitud.AprobadoPorGerenteId = gerenteId;
         solicitud.AprobadoPorGerenteEn = DateTime.UtcNow;
         solicitudes.Update(solicitud);
+        foreach (var adminId in await SolicitarEliminacionUseCase.IdsAdministradoresAsync(usuarios, cancellationToken))
+            await notificaciones.AddAsync(NotificacionFactory.GerenteEndoso(adminId, solicitud), cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return SolicitudEliminacionMapper.ToResponse(solicitud);
     }
 }
 
-public class RechazarComoGerenteUseCase(ISolicitudEliminacionRepository solicitudes, IUnitOfWork unitOfWork) : IRechazarComoGerenteUseCase
+public class RechazarComoGerenteUseCase(ISolicitudEliminacionRepository solicitudes, INotificacionRepository notificaciones, IUnitOfWork unitOfWork) : IRechazarComoGerenteUseCase
 {
     public async Task<SolicitudEliminacionResponseDto> ExecuteAsync(Guid solicitudId, Guid gerenteId, RevisionSolicitudDto input, CancellationToken cancellationToken = default)
     {
@@ -62,6 +86,7 @@ public class RechazarComoGerenteUseCase(ISolicitudEliminacionRepository solicitu
         solicitud.RevisadoEn = DateTime.UtcNow;
         solicitud.ComentarioRevision = input.Comentario;
         solicitudes.Update(solicitud);
+        await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(solicitud, aprobada: false, input.Comentario), cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return SolicitudEliminacionMapper.ToResponse(solicitud);
     }
@@ -72,6 +97,7 @@ public class AprobarComoAdminUseCase(
     IClienteRepository clientes,
     IProveedorRepository proveedores,
     IProyectoRepository proyectos,
+    INotificacionRepository notificaciones,
     IUnitOfWork unitOfWork) : IAprobarComoAdminUseCase
 {
     public async Task<SolicitudEliminacionResponseDto> ExecuteAsync(Guid solicitudId, Guid adminId, RevisionSolicitudDto input, CancellationToken cancellationToken = default)
@@ -97,12 +123,25 @@ public class AprobarComoAdminUseCase(
         solicitud.RevisadoEn = DateTime.UtcNow;
         solicitud.ComentarioRevision = input.Comentario;
         solicitudes.Update(solicitud);
+        await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(solicitud, aprobada: true, input.Comentario), cancellationToken);
+
+        // El administrador decide UNA vez por la entidad, no solicitud por solicitud (docs/19): como
+        // la entidad ya se eliminó, cualquier otra solicitud todavía abierta para ella (la haya hecho
+        // quien la haya hecho, en cualquiera de las dos etapas) queda resuelta con la misma decisión y
+        // el mismo comentario -- nadie se queda con una solicitud pendiente apuntando a algo que ya no existe.
+        foreach (var otra in await solicitudes.GetOtrasPendientesPorEntidadAsync(solicitud.TipoEntidad, solicitud.EntidadId, solicitud.Id, cancellationToken))
+        {
+            otra.Estado = "aprobada"; otra.RevisadoPorId = adminId; otra.RevisadoEn = DateTime.UtcNow; otra.ComentarioRevision = input.Comentario;
+            solicitudes.Update(otra);
+            await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(otra, aprobada: true, input.Comentario), cancellationToken);
+        }
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return SolicitudEliminacionMapper.ToResponse(solicitud);
     }
 }
 
-public class RechazarComoAdminUseCase(ISolicitudEliminacionRepository solicitudes, IUnitOfWork unitOfWork) : IRechazarComoAdminUseCase
+public class RechazarComoAdminUseCase(ISolicitudEliminacionRepository solicitudes, INotificacionRepository notificaciones, IUnitOfWork unitOfWork) : IRechazarComoAdminUseCase
 {
     public async Task<SolicitudEliminacionResponseDto> ExecuteAsync(Guid solicitudId, Guid adminId, RevisionSolicitudDto input, CancellationToken cancellationToken = default)
     {
@@ -113,6 +152,17 @@ public class RechazarComoAdminUseCase(ISolicitudEliminacionRepository solicitude
         solicitud.RevisadoEn = DateTime.UtcNow;
         solicitud.ComentarioRevision = input.Comentario;
         solicitudes.Update(solicitud);
+        await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(solicitud, aprobada: false, input.Comentario), cancellationToken);
+
+        // Misma razón que en AprobarComoAdminUseCase: una sola decisión del administrador resuelve
+        // TODAS las solicitudes pendientes de esa misma entidad, no solo la que se revisó primero.
+        foreach (var otra in await solicitudes.GetOtrasPendientesPorEntidadAsync(solicitud.TipoEntidad, solicitud.EntidadId, solicitud.Id, cancellationToken))
+        {
+            otra.Estado = "rechazada"; otra.RevisadoPorId = adminId; otra.RevisadoEn = DateTime.UtcNow; otra.ComentarioRevision = input.Comentario;
+            solicitudes.Update(otra);
+            await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(otra, aprobada: false, input.Comentario), cancellationToken);
+        }
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return SolicitudEliminacionMapper.ToResponse(solicitud);
     }

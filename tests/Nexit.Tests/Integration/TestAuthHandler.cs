@@ -27,6 +27,14 @@ public class TestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> option
     public const string TestAuthHeader = "X-Test-Role";
     public const string TestUserIdHeader = "X-Test-UserId";
 
+    /// <summary>
+    /// ("X-Test-Active", opcional): pasar "false" para simular una cuenta desactivada (agrega el
+    /// claim user_active=false, ver docs/17-eliminacion-automatica-usuarios.md). Sin esta cabecera
+    /// no se agrega el claim -- mismo comportamiento de "activa" que tenían todas las pruebas antes
+    /// de que existiera este chequeo, para no tener que tocar ninguna prueba ya escrita.
+    /// </summary>
+    public const string TestActiveHeader = "X-Test-Active";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Headers.TryGetValue(TestAuthHeader, out var role) || string.IsNullOrWhiteSpace(role))
@@ -40,6 +48,8 @@ public class TestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> option
             new(ClaimTypes.NameIdentifier, userId.ToString()),
             new("user_role", role.ToString())
         };
+        if (Request.Headers.TryGetValue(TestActiveHeader, out var active) && active == "false")
+            claims.Add(new Claim("user_active", "false"));
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);
         var ticket = new AuthenticationTicket(principal, SchemeName);

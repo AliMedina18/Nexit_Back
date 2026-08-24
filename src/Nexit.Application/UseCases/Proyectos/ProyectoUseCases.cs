@@ -1,12 +1,14 @@
 using Nexit.Application.DTOs.Proyectos;
+using Nexit.Application.UseCases.Historial;
 using Nexit.Core.Constants;
 using Nexit.Core.Entities;
 using Nexit.Core.Exceptions;
 using Nexit.Core.Interfaces;
+using Nexit.Core.Utils;
 
 namespace Nexit.Application.UseCases.Proyectos;
 
-public class CrearProyectoUseCase(IProyectoRepository repository, IClienteRepository clientes, IProveedorRepository proveedores, ICatalogosRepository catalogos, IUnitOfWork unitOfWork) : ICrearProyectoUseCase
+public class CrearProyectoUseCase(IProyectoRepository repository, IClienteRepository clientes, IProveedorRepository proveedores, ICatalogosRepository catalogos, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : ICrearProyectoUseCase
 {
     public async Task<ProyectoResponseDto> ExecuteAsync(CrearProyectoDto input, Guid usuarioId, string? usuarioRol, CancellationToken ct = default)
     {
@@ -18,21 +20,26 @@ public class CrearProyectoUseCase(IProyectoRepository repository, IClienteReposi
         proyecto.GerenteId = ProyectoRules.EsAdminOAbove(usuarioRol) ? input.GerenteId
             : usuarioRol == Roles.Manager ? usuarioId
             : null;
-        await repository.AddAsync(proyecto, ct); await unitOfWork.SaveChangesAsync(ct);
+        await repository.AddAsync(proyecto, ct);
+        await HistorialRegistrador.RegistrarCreacionAsync(historial, "proyecto", proyecto.Id, usuarioId, ct);
+        await unitOfWork.SaveChangesAsync(ct);
         return ProyectoMapper.ToResponse(proyecto);
     }
 }
 
-public class ActualizarProyectoUseCase(IProyectoRepository repository, IClienteRepository clientes, IProveedorRepository proveedores, ICatalogosRepository catalogos, IUnitOfWork unitOfWork) : IActualizarProyectoUseCase
+public class ActualizarProyectoUseCase(IProyectoRepository repository, IClienteRepository clientes, IProveedorRepository proveedores, ICatalogosRepository catalogos, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : IActualizarProyectoUseCase
 {
     public async Task<ProyectoResponseDto> ExecuteAsync(ActualizarProyectoDto input, Guid usuarioId, string? usuarioRol, CancellationToken ct = default)
     {
         var proyecto = await repository.GetByIdAsync(input.Id, ct) ?? throw new EntityNotFoundException("Proyecto", input.Id);
+        var antes = CambioDetector.Snapshot(proyecto);
         await ProyectoRules.ValidarReferencias(input, clientes, proveedores, catalogos, ct);
         if (input.GerenteId != proyecto.GerenteId && !ProyectoRules.EsAdminOAbove(usuarioRol))
             throw new ForbiddenOperationException("Solo un administrador puede reasignar el gerente responsable de un proyecto.");
         ProyectoMapper.Apply(input, proyecto); proyecto.UpdatedAt = DateTime.UtcNow; proyecto.UpdatedBy = usuarioId;
-        repository.Update(proyecto); await unitOfWork.SaveChangesAsync(ct);
+        repository.Update(proyecto);
+        await HistorialRegistrador.RegistrarEdicionAsync(historial, "proyecto", proyecto.Id, usuarioId, antes, proyecto, ct);
+        await unitOfWork.SaveChangesAsync(ct);
         return ProyectoMapper.ToResponse(proyecto);
     }
 }
@@ -43,12 +50,49 @@ public class ConsultarProyectosUseCase(IProyectoRepository repository) : IConsul
     public async Task<ProyectoResponseDto> GetByIdAsync(Guid id, CancellationToken ct = default) => ProyectoMapper.ToResponse(await repository.GetByIdAsync(id, ct) ?? throw new EntityNotFoundException("Proyecto", id));
 }
 
-public class EliminarProyectoUseCase(IProyectoRepository repository, IUnitOfWork unitOfWork) : IEliminarProyectoUseCase
+/// <summary>
+/// "A qué proyecto atender primero" (docs/21, docs/22) -- Nivel 1 de la propuesta: puntúa con
+/// <see cref="PrioridadProyectoCalculador"/> todos los proyectos que no estén ya en un estado
+/// terminal (no tiene sentido priorizar algo que ya se finalizó, canceló, no se ejecutó o ya se
+/// facturó), y los devuelve ordenados de mayor a menor puntaje.
+/// </summary>
+public class ConsultarPrioridadProyectosUseCase(IProyectoRepository repository, ICatalogosRepository catalogos) : IConsultarPrioridadProyectosUseCase
 {
-    public async Task ExecuteAsync(Guid id, CancellationToken ct = default)
+    private static readonly HashSet<string> EstadosTerminales = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Finalizado", "Cancelado", "No ejecutado", "Facturado"
+    };
+
+    public async Task<IReadOnlyList<ProyectoPrioridadResponseDto>> ExecuteAsync(CancellationToken ct = default)
+    {
+        var estados = await catalogos.GetEstadosAsync(null, ct);
+        var idsTerminales = estados.Where(e => EstadosTerminales.Contains(e.Nombre)).Select(e => e.Id).ToHashSet();
+
+        var ahora = DateTime.UtcNow;
+        return (await repository.GetAllAsync(ct))
+            .Where(p => !idsTerminales.Contains(p.EstadoId))
+            .Select(p =>
+            {
+                // La entrada más reciente de la bitácora de seguimiento es la señal de "última
+                // actividad" (docs/21) -- si todavía no tiene ninguna, se usa la fecha de creación,
+                // así un proyecto recién creado también puede puntuarse (no queda sin actividad = null).
+                var ultimaActividad = p.Seguimiento.Count > 0 ? p.Seguimiento.Max(s => s.Fecha) : p.CreatedAt;
+                var resultado = PrioridadProyectoCalculador.Calcular(p, ultimaActividad, ahora);
+                return new ProyectoPrioridadResponseDto { ProyectoId = p.Id, Nombre = p.Nombre, Puntaje = resultado.Puntaje, Razones = resultado.Razones.ToList() };
+            })
+            .OrderByDescending(x => x.Puntaje).ThenBy(x => x.Nombre)
+            .ToList();
+    }
+}
+
+public class EliminarProyectoUseCase(IProyectoRepository repository, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : IEliminarProyectoUseCase
+{
+    public async Task ExecuteAsync(Guid id, Guid usuarioId, CancellationToken ct = default)
     {
         if (await repository.GetByIdAsync(id, ct) is null) throw new EntityNotFoundException("Proyecto", id);
-        await repository.DeleteAsync(id, ct); await unitOfWork.SaveChangesAsync(ct);
+        await repository.DeleteAsync(id, ct);
+        await HistorialRegistrador.RegistrarEliminacionAsync(historial, "proyecto", id, usuarioId, ct);
+        await unitOfWork.SaveChangesAsync(ct);
     }
 }
 

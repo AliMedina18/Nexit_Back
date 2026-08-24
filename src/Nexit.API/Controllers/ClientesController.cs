@@ -34,7 +34,7 @@ public class ClientesController(ICrearClienteUseCase crear, IActualizarClienteUs
     [HttpDelete("{id:guid}"), Authorize(Policy = "AdminOrAbove")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        await eliminar.ExecuteAsync(id, cancellationToken);
+        await eliminar.ExecuteAsync(id, GetUserId(), cancellationToken);
         return NoContent();
     }
 }
