@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.AddScoped<INotificacionRepository, NotificacionRepository>();
         services.AddScoped<IHistorialCambioRepository, HistorialCambioRepository>();
         services.AddScoped<IProveedorColaboradorRepository, ProveedorColaboradorRepository>();
+        services.AddScoped<IInvitacionEquipoRepository, InvitacionEquipoRepository>();
         services.AddSingleton<IInformeExcelExporter, InformeExcelExporter>();
         services.AddScoped<ISupabaseAuthAdminService, SupabaseAuthAdminService>();
         services.AddHostedService<EliminacionAutomaticaUsuariosInactivosService>();

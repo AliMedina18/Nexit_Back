@@ -297,7 +297,7 @@ Ver `docs/21-priorizacion-sugerencias-investigacion-y-propuesta.md` para la inve
 ### Notas técnicas
 - Es Nivel 1 de la propuesta de `docs/21` — reglas simples, sin IA, tal como se pidió explícitamente probar primero.
 - Los pesos de cada señal son un punto de partida, pensados para ajustarse con casos reales más adelante (ver `docs/22`).
-- Todavía no cubre proveedores ni clientes — solo proyectos.
+- Extendida a proveedores y clientes en HU-10, más abajo.
 
 ### Estado del backend para esta historia: ✅ Completo
 
@@ -305,9 +305,67 @@ Ver `docs/21-priorizacion-sugerencias-investigacion-y-propuesta.md` para la inve
 
 ---
 
+## HU-10 — Ver a qué proveedor y a qué cliente atender primero
+
+**Como** cualquier persona con acceso a proveedores o clientes, **quiero** ver esas listas ordenadas por qué tanto vale la pena prestarles atención ahora, con la razón de cada puntaje, **para** no dejar pasar buenos proveedores sin usar ni clientes que llevan tiempo sin actividad.
+
+Ver `docs/23-evaluacion-de-dos-proyectos-de-referencia.md` (por qué se descartó copiar código de los dos proyectos de referencia, pero sí se reutilizó su lógica) y `docs/24-prioridad-proveedores-y-clientes.md` para el diseño de lo construido.
+
+### Flujo principal
+1. La persona entra a la vista de "prioridad" de proveedores o de clientes.
+2. El frontend llama a `GET /api/proveedores/prioridad` o `GET /api/clientes/prioridad`.
+3. Ve la lista ordenada de mayor a menor puntaje, cada uno con la lista de razones concretas (ej. "Bien calificado (Score 5/5) pero sin proyectos en los últimos 120 días").
+
+### Criterios de aceptación
+- Un proveedor en estado "Bloqueado" nunca aparece en la lista de prioridad de proveedores.
+- Cada proveedor/cliente siempre viene con al menos su puntaje; si es 0, la lista de razones puede venir vacía.
+- Los de mayor puntaje aparecen primero.
+
+### Notas técnicas
+- Sigue siendo 100% reglas, sin IA — tal como se confirmó explícitamente al pedir esta extensión.
+- Los pesos son un punto de partida, ajustable con casos reales (igual que HU-09).
+- Se dejó fuera del puntaje de clientes el eje "valor monetario" del modelo RFM (`docs/21`) porque `Cliente` no tiene todavía un campo numérico confiable para eso.
+
+### Estado del backend para esta historia: ✅ Completo
+
+213 pruebas en total (206 pasan, 7 dependen de Docker en este entorno — nada nuevo), 22 nuevas para esta historia, cero regresiones.
+
+---
+
+## HU-11 — Invitar a alguien del equipo desde dentro de Nexit, con aceptar/rechazar
+
+**Como** super administradora, **quiero** invitar a alguien nuevo escribiendo su correo, su rol y un mensaje corto, sin ir al dashboard de Supabase ni copiar ningún UUID a mano, **para** que dar de alta a alguien sea un solo paso en vez de dos acciones manuales separadas.
+
+**Como** persona recién invitada, **quiero** ver esa invitación (con el mensaje de quien me invitó) la primera vez que entro, y decidir si la acepto o la rechazo, **para** que mi perfil se cree solo si acepto, sin que nadie más tenga que crearlo por mí.
+
+Ver `docs/25-invitar-y-registrar-en-un-solo-paso.md` para el diseño completo (esto era el único hueco real de backend que quedó tras revisar "qué falta" del sistema — `docs/10`, sección 5).
+
+### Flujo principal
+1. La super administradora llama a `POST /api/invitaciones` (correo, rol, mensaje opcional). El backend valida y dispara la invitación real por la Admin API de Supabase.
+2. Supabase le manda el correo a la persona invitada, como siempre; hace clic y crea su contraseña en la página de Supabase.
+3. La primera vez que entra a Nexit, `GET /api/invitaciones/mia` le muestra su invitación pendiente.
+4. Acepta (`POST /api/invitaciones/{id}/aceptar`, completando nombre y apellido) — su perfil se crea solo, con el rol propuesto. O rechaza (`POST /api/invitaciones/{id}/rechazar`) — no se crea nada.
+
+### Criterios de aceptación
+- No se guarda ninguna invitación si la llamada real a Supabase falla.
+- Nadie puede aceptar o rechazar una invitación que no es la suya (el correo debe coincidir).
+- No se puede responder dos veces la misma invitación, ni invitar dos veces al mismo correo mientras la primera siga pendiente.
+
+### Notas técnicas
+- Usa las mismas claves de configuración que `docs/17` (`Supabase:ProjectUrl`, `Supabase:ServiceRoleKey`) — si ya las configuraste para la eliminación automática de cuentas, esto funciona sin nada adicional.
+- Esta es también la vía para dar de alta la cuenta de `analistacompras@agencianextmkt.com` que quedó mencionada como pendiente en la nota de abajo, cuando quieras invitarla.
+
+### Estado del backend para esta historia: ✅ Completo, 🟡 para probarla de verdad
+
+El código está completo y probado. Falta el mismo paso externo que `docs/17` — que configures `Supabase:ProjectUrl`/`Supabase:ServiceRoleKey` en `appsettings.Production.json` — para poder invitar a alguien de verdad y ver el correo llegar.
+
+226 pruebas en total (219 pasan, 7 dependen de Docker en este entorno — nada nuevo), 11 nuevas para esta historia, cero regresiones.
+
+---
+
 ## Nota de referencia (no es una historia, es contexto para cuando exista el Supabase real)
 
-La usuaria mencionó, al describir HU-01, una futura cuenta de administrador: `analistacompras@agencianextmkt.com` (dominio ya permitido). Todavía no se ha invitado ni registrado en ningún lado — queda anotada aquí solo como referencia para cuando se ejecute el alta real de usuarios (`docs/09`, secciones 7-9), no requiere ninguna acción en este documento.
+La usuaria mencionó, al describir HU-01, una futura cuenta de administrador: `analistacompras@agencianextmkt.com` (dominio ya permitido). Todavía no se ha invitado ni registrado en ningún lado — con HU-11 ya se puede hacer en un solo paso desde `POST /api/invitaciones` cuando quieras, sin que esta nota requiera ninguna acción por sí sola.
 
 ## Próximas historias a escribir
 

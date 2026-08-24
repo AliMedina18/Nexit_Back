@@ -96,3 +96,28 @@ internal static class ProveedorRules
             if (await catalogos.GetServicioAsync(servicioId, ct) is null) throw new BusinessRuleException("Uno de los servicios indicados no existe.");
     }
 }
+
+/// <summary>
+/// "A qué proveedor prestarle atención" (docs/21, docs/24): puntúa con <see cref="PrioridadProveedorCalculador"/>
+/// todos los proveedores que no estén "Bloqueado" (no tiene sentido priorizar uno que ya no se usa),
+/// y los devuelve ordenados de mayor a menor puntaje.
+/// </summary>
+public class ConsultarPrioridadProveedoresUseCase(IProveedorRepository repository) : IConsultarPrioridadProveedoresUseCase
+{
+    public async Task<IReadOnlyList<ProveedorPrioridadResponseDto>> ExecuteAsync(CancellationToken ct = default)
+    {
+        var ahora = DateTime.UtcNow;
+        return (await repository.GetAllAsync(ct))
+            .Where(p => !string.Equals(p.Estado, "Bloqueado", StringComparison.OrdinalIgnoreCase))
+            .Select(p =>
+            {
+                // Fecha del proyecto más reciente que lo tiene asociado (ProveedorRepository.GetAllAsync
+                // ahora incluye Proyectos.Proyecto, ver docs/24), o null si nunca se le asignó ninguno.
+                var ultimoProyecto = p.Proyectos.Count > 0 ? p.Proyectos.Max(pp => pp.Proyecto.CreatedAt) : (DateTime?)null;
+                var resultado = PrioridadProveedorCalculador.Calcular(p, ultimoProyecto, ahora);
+                return new ProveedorPrioridadResponseDto { ProveedorId = p.Id, Nombre = p.Nombre, Puntaje = resultado.Puntaje, Razones = resultado.Razones.ToList() };
+            })
+            .OrderByDescending(x => x.Puntaje).ThenBy(x => x.Nombre)
+            .ToList();
+    }
+}

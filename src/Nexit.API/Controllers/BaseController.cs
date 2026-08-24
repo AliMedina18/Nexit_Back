@@ -23,4 +23,7 @@ public abstract class BaseController : ControllerBase
     /// ejemplo, "solo un administrador puede reasignar el gerente de un proyecto").
     /// </summary>
     protected string? GetUserRole() => User.FindFirstValue("app_role") ?? User.FindFirstValue("user_role") ?? User.FindFirstValue(ClaimTypes.Role);
+
+    /// <summary>Correo del usuario autenticado, tomado del JWT de Supabase -- usado para invitaciones (docs/25), donde quien acepta/rechaza todavía no tiene fila en `usuarios` y por eso no se puede identificar por rol.</summary>
+    protected string? GetUserEmail() => User.FindFirstValue("email") ?? User.FindFirstValue(ClaimTypes.Email);
 }

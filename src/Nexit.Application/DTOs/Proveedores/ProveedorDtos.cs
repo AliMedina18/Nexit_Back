@@ -47,3 +47,12 @@ public class ProveedorResponseDto : CreateProveedorDto
     public DateTime? UpdatedAt { get; set; }
     public List<ColaboradorProveedorDto> Colaboradores { get; set; } = [];
 }
+
+/// <summary>"A qué proveedor prestarle atención" (docs/21, docs/24) -- puntuado con las razones de cada puntaje.</summary>
+public class ProveedorPrioridadResponseDto
+{
+    public Guid ProveedorId { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public int Puntaje { get; set; }
+    public List<string> Razones { get; set; } = [];
+}

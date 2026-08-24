@@ -12,4 +12,13 @@ namespace Nexit.Core.Interfaces;
 public interface ISupabaseAuthAdminService
 {
     Task EliminarCuentaAsync(Guid usuarioId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Invita a alguien nuevo por correo usando la Admin API de Supabase Auth (docs/25) -- a
+    /// diferencia de <see cref="EliminarCuentaAsync"/>, si la Service Role Key no está configurada
+    /// esto SÍ lanza una excepción (<c>BusinessRuleException</c>): invitar es la acción principal de
+    /// la operación, no un cleanup de mejor esfuerzo, así que no tiene sentido dejar a alguien
+    /// pensando que se envió la invitación cuando en realidad no pasó nada.
+    /// </summary>
+    Task InvitarUsuarioAsync(string email, CancellationToken cancellationToken = default);
 }

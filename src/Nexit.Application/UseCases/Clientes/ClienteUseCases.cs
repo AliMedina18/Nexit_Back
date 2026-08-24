@@ -100,3 +100,29 @@ public class EliminarClienteUseCase(IClienteRepository repository, IHistorialCam
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }
+
+/// <summary>
+/// "A qué cliente prestarle atención" (docs/21, docs/24): puntúa con <see cref="PrioridadClienteCalculador"/>
+/// todos los clientes (recencia de su último proyecto + cuántos proyectos activos tiene ahora
+/// mismo), ordenados de mayor a menor puntaje.
+/// </summary>
+public class ConsultarPrioridadClientesUseCase(IClienteRepository repository, ICatalogosRepository catalogos) : IConsultarPrioridadClientesUseCase
+{
+    public async Task<IReadOnlyList<ClientePrioridadResponseDto>> ExecuteAsync(CancellationToken ct = default)
+    {
+        var estados = await catalogos.GetEstadosAsync(null, ct);
+        var idsTerminales = estados.Where(e => EstadosProyectoTerminales.Nombres.Contains(e.Nombre)).Select(e => e.Id).ToHashSet();
+        var ahora = DateTime.UtcNow;
+
+        return (await repository.GetAllAsync(ct))
+            .Select(c =>
+            {
+                var ultimoProyecto = c.Proyectos.Count > 0 ? c.Proyectos.Max(p => p.CreatedAt) : (DateTime?)null;
+                var proyectosActivos = c.Proyectos.Count(p => !idsTerminales.Contains(p.EstadoId));
+                var resultado = PrioridadClienteCalculador.Calcular(c, ultimoProyecto, proyectosActivos, ahora);
+                return new ClientePrioridadResponseDto { ClienteId = c.Id, Nombre = c.Nombre, Puntaje = resultado.Puntaje, Razones = resultado.Razones.ToList() };
+            })
+            .OrderByDescending(x => x.Puntaje).ThenBy(x => x.Nombre)
+            .ToList();
+    }
+}

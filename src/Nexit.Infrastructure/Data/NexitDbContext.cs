@@ -30,6 +30,7 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
     public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
     public DbSet<HistorialCambio> HistorialCambios => Set<HistorialCambio>();
     public DbSet<ProveedorColaborador> ProveedorColaboradores => Set<ProveedorColaborador>();
+    public DbSet<InvitacionEquipo> InvitacionesEquipo => Set<InvitacionEquipo>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -235,6 +236,18 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.Property(x => x.FechaAgregado).HasDefaultValueSql("now()");
             entity.HasOne(x => x.Proveedor).WithMany(x => x.Colaboradores).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<InvitacionEquipo>(entity =>
+        {
+            entity.ToTable("invitaciones_equipo", t => t.HasCheckConstraint("ck_invitaciones_equipo_estado", "estado IN ('Pendiente', 'Aceptada', 'Rechazada')"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(x => x.Email).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Rol).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Mensaje).HasMaxLength(500);
+            entity.Property(x => x.Estado).HasMaxLength(20).IsRequired();
+            entity.HasIndex(x => new { x.Email, x.Estado });
+            entity.HasOne(x => x.InvitadoPor).WithMany().HasForeignKey(x => x.InvitadoPorId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

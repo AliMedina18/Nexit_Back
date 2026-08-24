@@ -9,14 +9,19 @@ namespace Nexit.API.Controllers;
 public class ProveedoresController(
     ICrearProveedorUseCase crear, IActualizarProveedorUseCase actualizar, IConsultarProveedoresUseCase consultar, IEliminarProveedorUseCase eliminar,
     IMarcarColaboradorProveedorUseCase marcarColaborador, IQuitarColaboradorProveedorUseCase quitarColaborador, IListarMisProveedoresUseCase listarMios,
+    IConsultarPrioridadProveedoresUseCase consultarPrioridad,
     IValidator<CreateProveedorDto> createValidator, IValidator<UpdateProveedorDto> updateValidator) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ProveedorResponseDto>>> GetAll(CancellationToken ct) => Ok(await consultar.ListAsync(ct));
 
-    // Antes de "{id:guid}" a propósito -- si no, ASP.NET Core intenta parsear "mios" como Guid y falla con 404.
+    // Antes de "{id:guid}" a propósito -- si no, ASP.NET Core intenta parsear "mios"/"prioridad" como Guid y falla con 404.
     [HttpGet("mios")]
     public async Task<ActionResult<IReadOnlyList<ProveedorResponseDto>>> GetMisProveedores(CancellationToken ct) => Ok(await listarMios.ExecuteAsync(GetUserId(), ct));
+
+    /// <summary>"A qué proveedor prestarle atención" (docs/21, docs/24) -- puntuado y ordenado, con las razones de cada puntaje.</summary>
+    [HttpGet("prioridad")]
+    public async Task<ActionResult<IReadOnlyList<ProveedorPrioridadResponseDto>>> GetPrioridad(CancellationToken ct) => Ok(await consultarPrioridad.ExecuteAsync(ct));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProveedorResponseDto>> GetById(Guid id, CancellationToken ct) => Ok(await consultar.GetByIdAsync(id, ct));

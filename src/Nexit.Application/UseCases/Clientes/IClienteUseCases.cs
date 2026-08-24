@@ -10,3 +10,5 @@ public interface IConsultarClientesUseCase
     Task<ClienteResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 }
 public interface IEliminarClienteUseCase { Task ExecuteAsync(Guid id, Guid usuarioId, CancellationToken cancellationToken = default); }
+/// <summary>"A qué cliente prestarle atención" (docs/21, docs/24) -- todos los clientes puntuados con la rúbrica de <c>PrioridadClienteCalculador</c>, de mayor a menor puntaje.</summary>
+public interface IConsultarPrioridadClientesUseCase { Task<IReadOnlyList<ClientePrioridadResponseDto>> ExecuteAsync(CancellationToken cancellationToken = default); }

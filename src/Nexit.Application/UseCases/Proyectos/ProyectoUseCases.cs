@@ -58,15 +58,12 @@ public class ConsultarProyectosUseCase(IProyectoRepository repository) : IConsul
 /// </summary>
 public class ConsultarPrioridadProyectosUseCase(IProyectoRepository repository, ICatalogosRepository catalogos) : IConsultarPrioridadProyectosUseCase
 {
-    private static readonly HashSet<string> EstadosTerminales = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Finalizado", "Cancelado", "No ejecutado", "Facturado"
-    };
-
     public async Task<IReadOnlyList<ProyectoPrioridadResponseDto>> ExecuteAsync(CancellationToken ct = default)
     {
         var estados = await catalogos.GetEstadosAsync(null, ct);
-        var idsTerminales = estados.Where(e => EstadosTerminales.Contains(e.Nombre)).Select(e => e.Id).ToHashSet();
+        // Set de nombres centralizado en EstadosProyectoTerminales.Nombres (docs/24) -- lo comparte
+        // con ConsultarPrioridadClientesUseCase, antes estaba duplicado acá.
+        var idsTerminales = estados.Where(e => EstadosProyectoTerminales.Nombres.Contains(e.Nombre)).Select(e => e.Id).ToHashSet();
 
         var ahora = DateTime.UtcNow;
         return (await repository.GetAllAsync(ct))

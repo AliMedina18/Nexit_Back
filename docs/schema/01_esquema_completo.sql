@@ -16,6 +16,10 @@
 -- intentar crear esas dos cosas y fallaría porque ya existen. Este archivo sigue sirviendo
 -- para tu base local `nexit_dev` con `dotnet ef database update` (ahí nunca se corrió nada
 -- a mano, así que no hay ese choque) y como referencia de "cómo es el esquema completo hoy".
+--
+-- **Nota 2026-08-24 (segunda del día):** también incluye ahora `invitaciones_equipo`
+-- (migración `AddInvitacionesEquipo`, docs/25) -- misma situación que la nota de arriba:
+-- para Supabase usa `docs/schema/08_invitaciones_equipo.sql` en vez de este archivo completo.
 
 CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
     migration_id character varying(150) NOT NULL,
@@ -1348,6 +1352,54 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824004948_AddNotificacionesHistorialColaboradores') THEN
     INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
     VALUES ('20260824004948_AddNotificacionesHistorialColaboradores', '8.0.11');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824015113_AddInvitacionesEquipo') THEN
+    CREATE TABLE invitaciones_equipo (
+        id uuid NOT NULL DEFAULT (gen_random_uuid()),
+        email character varying(255) NOT NULL,
+        rol character varying(20) NOT NULL,
+        mensaje character varying(500),
+        estado character varying(20) NOT NULL,
+        invitado_por_id uuid NOT NULL,
+        fecha_respuesta timestamp with time zone,
+        created_at timestamp with time zone NOT NULL,
+        updated_at timestamp with time zone,
+        created_by uuid,
+        updated_by uuid,
+        CONSTRAINT pk_invitaciones_equipo PRIMARY KEY (id),
+        CONSTRAINT ck_invitaciones_equipo_estado CHECK (estado IN ('Pendiente', 'Aceptada', 'Rechazada')),
+        CONSTRAINT fk_invitaciones_equipo_usuarios_invitado_por_id FOREIGN KEY (invitado_por_id) REFERENCES usuarios (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824015113_AddInvitacionesEquipo') THEN
+    CREATE INDEX ix_invitaciones_equipo_email_estado ON invitaciones_equipo (email, estado);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824015113_AddInvitacionesEquipo') THEN
+    CREATE INDEX ix_invitaciones_equipo_invitado_por_id ON invitaciones_equipo (invitado_por_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260824015113_AddInvitacionesEquipo') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260824015113_AddInvitacionesEquipo', '8.0.11');
     END IF;
 END $EF$;
 COMMIT;

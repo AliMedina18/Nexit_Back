@@ -9,6 +9,7 @@ using Nexit.Application.UseCases.Usuarios;
 using Nexit.Application.UseCases.SolicitudesEliminacion;
 using Nexit.Application.UseCases.Notificaciones;
 using Nexit.Application.UseCases.Historial;
+using Nexit.Application.UseCases.Invitaciones;
 
 namespace Nexit.Application;
 
@@ -21,11 +22,13 @@ public static class DependencyInjection
         services.AddScoped<IActualizarClienteUseCase, ActualizarClienteUseCase>();
         services.AddScoped<IConsultarClientesUseCase, ConsultarClientesUseCase>();
         services.AddScoped<IEliminarClienteUseCase, EliminarClienteUseCase>();
+        services.AddScoped<IConsultarPrioridadClientesUseCase, ConsultarPrioridadClientesUseCase>();
         services.AddScoped<ICatalogosService, CatalogosService>();
         services.AddScoped<ICrearProveedorUseCase, CrearProveedorUseCase>();
         services.AddScoped<IActualizarProveedorUseCase, ActualizarProveedorUseCase>();
         services.AddScoped<IConsultarProveedoresUseCase, ConsultarProveedoresUseCase>();
         services.AddScoped<IEliminarProveedorUseCase, EliminarProveedorUseCase>();
+        services.AddScoped<IConsultarPrioridadProveedoresUseCase, ConsultarPrioridadProveedoresUseCase>();
         services.AddScoped<IProveedorAdjuntosUseCase, ProveedorAdjuntosUseCase>();
         services.AddScoped<ICrearProyectoUseCase, CrearProyectoUseCase>();
         services.AddScoped<IActualizarProyectoUseCase, ActualizarProyectoUseCase>();
@@ -53,6 +56,11 @@ public static class DependencyInjection
         services.AddScoped<IMarcarColaboradorProveedorUseCase, MarcarColaboradorProveedorUseCase>();
         services.AddScoped<IQuitarColaboradorProveedorUseCase, QuitarColaboradorProveedorUseCase>();
         services.AddScoped<IListarMisProveedoresUseCase, ListarMisProveedoresUseCase>();
+        services.AddScoped<ICrearInvitacionUseCase, CrearInvitacionUseCase>();
+        services.AddScoped<IConsultarInvitacionesUseCase, ConsultarInvitacionesUseCase>();
+        services.AddScoped<IConsultarMiInvitacionUseCase, ConsultarMiInvitacionUseCase>();
+        services.AddScoped<IAceptarInvitacionUseCase, AceptarInvitacionUseCase>();
+        services.AddScoped<IRechazarInvitacionUseCase, RechazarInvitacionUseCase>();
         return services;
     }
 }

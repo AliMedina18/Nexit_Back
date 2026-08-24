@@ -6,10 +6,16 @@ using Nexit.Application.UseCases.Clientes;
 
 namespace Nexit.API.Controllers;
 
-public class ClientesController(ICrearClienteUseCase crear, IActualizarClienteUseCase actualizar, IConsultarClientesUseCase consultar, IEliminarClienteUseCase eliminar, IValidator<CreateClienteDto> createValidator, IValidator<UpdateClienteDto> updateValidator) : BaseController
+public class ClientesController(ICrearClienteUseCase crear, IActualizarClienteUseCase actualizar, IConsultarClientesUseCase consultar, IEliminarClienteUseCase eliminar, IConsultarPrioridadClientesUseCase consultarPrioridad, IValidator<CreateClienteDto> createValidator, IValidator<UpdateClienteDto> updateValidator) : BaseController
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ClienteResponseDto>>> GetAll(CancellationToken cancellationToken) => Ok(await consultar.ListAsync(cancellationToken));
+
+    // Antes de "{id:guid}" a propósito -- si no, ASP.NET Core intenta parsear "prioridad" como Guid y falla con 404.
+    /// <summary>"A qué cliente prestarle atención" (docs/21, docs/24) -- puntuado y ordenado, con las razones de cada puntaje.</summary>
+    [HttpGet("prioridad")]
+    public async Task<ActionResult<IReadOnlyList<ClientePrioridadResponseDto>>> GetPrioridad(CancellationToken cancellationToken) => Ok(await consultarPrioridad.ExecuteAsync(cancellationToken));
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ClienteResponseDto>> GetById(Guid id, CancellationToken cancellationToken) => Ok(await consultar.GetByIdAsync(id, cancellationToken));
     [HttpPost]

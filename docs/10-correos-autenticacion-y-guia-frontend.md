@@ -22,14 +22,14 @@ Esto tiene una implicación directa para el frontend: **el login y el registro d
 
 ### 2.1. Invitación de un usuario nuevo
 
-Hoy esto es un proceso **manual**, hecho por la super administradora desde el dashboard de Supabase (Authentication → Users → Invite user), no desde una pantalla del sistema. Cuando se invita a alguien:
+**Actualizado 2026-08-24 (ver `docs/25`):** ya existe una forma de hacer esto en un solo paso, desde dentro de Nexit, sin ir al dashboard de Supabase. La super administradora llama a `POST /api/invitaciones` (correo, rol, mensaje opcional) y el backend dispara la invitación real de Supabase por su cuenta, usando la Admin API con la Service Role Key. El resto del correo lo sigue mandando Supabase, igual que siempre:
 
-1. Supabase le envía un correo usando la plantilla **"Invite user"** (personalizable en Authentication → Emails, hoy con el texto por defecto).
-2. La persona invitada hace click en el enlace del correo y llega a una página **de Supabase** (no del frontend de Nexit) donde establece su contraseña, si aplica.
-3. Supabase le asigna un UUID a esa cuenta (visible en el dashboard después de que acepta).
-4. **Solo entonces** alguien con rol `super_admin` llama a `POST /api/usuarios` en este backend, pasándole ese UUID, para crear el "perfil de negocio" (nombre, apellido, rol, activo) — ver sección 4. Esta llamada NO dispara ningún correo, solo guarda una fila en la tabla `usuarios`.
+1. Supabase le envía el correo de invitación a la persona.
+2. La persona invitada hace click en el enlace del correo y llega a una página **de Supabase** (no del frontend de Nexit) donde establece su contraseña.
+3. La primera vez que esa persona entra a Nexit, el frontend llama a `GET /api/invitaciones/mia` -- si hay una invitación pendiente para su correo, se le muestra (con el rol propuesto y el mensaje de quien la invitó) para que la **acepte o rechace**.
+4. Si acepta (`POST /api/invitaciones/{id}/aceptar`, completando su nombre y apellido), su perfil de negocio se crea automáticamente con el rol que se le propuso -- usando su propio UUID de Supabase Auth, sin que nadie tenga que copiarlo a mano. Si rechaza (`POST /api/invitaciones/{id}/rechazar`), no se crea ningún perfil.
 
-Es decir, hoy dar de alta a alguien son **dos pasos separados y manuales**: invitar en Supabase, y después registrar el perfil en Nexit. No hay ni un botón ni un endpoint que haga los dos a la vez.
+El proceso manual anterior (invitar desde el dashboard de Supabase + `POST /api/usuarios` con el UUID a mano) sigue funcionando igual si alguna vez lo necesitas, pero ya no es el único camino.
 
 ### 2.2. Inicio de sesión — diseño vigente (actualizado 2026-08-21): OTP la primera vez, contraseña de ahí en adelante, para todos los roles
 
@@ -76,8 +76,8 @@ Esto es una validación de **quién puede tener perfil en el sistema**, no tiene
 
 Esto es lo que el frontend **no puede dar por hecho** que el backend resuelve, porque no está construido:
 
-- **No hay un endpoint que invite y registre en un solo paso.** Hoy son dos acciones manuales separadas (sección 2.1). Si quieres que el frontend tenga un botón "Invitar a un nuevo miembro del equipo" que haga todo automáticamente, hace falta un endpoint nuevo en el backend que use la `service_role key` de Supabase para llamar a su API de administración de usuarios (`auth.admin.inviteUserByEmail` o equivalente) — eso no existe todavía y sí sería trabajo de backend, no solo de frontend.
-- **No hay notificaciones por correo en el flujo de solicitudes de eliminación.** Cuando alguien crea una solicitud de eliminación (`POST /api/solicitudes-eliminacion`), o cuando un gerente/admin la aprueba o rechaza, **no se envía ningún correo ni notificación** a nadie. La única forma de enterarse hoy es consultando activamente `GET /api/solicitudes-eliminacion/pendientes-para-mi` (para gerentes) o `GET /api/solicitudes-eliminacion` (para admins). Si quieres que el gerente/admin se entere sin tener que entrar a revisar, el frontend tendría que implementar poll/consulta periódica (no hay websockets ni push), o pedirías backend nuevo para correos transaccionales de este flujo.
+- **Actualizado 2026-08-24 — esto ya se construyó, ver `docs/25`.** Ya existe `POST /api/invitaciones` (solo super administradora): invita por correo y registra el perfil en un solo paso, sin que nadie tenga que copiar ningún UUID a mano ni pasar por el dashboard de Supabase. La persona invitada ve su invitación pendiente con `GET /api/invitaciones/mia` la primera vez que entra, y decide aceptarla (`POST /api/invitaciones/{id}/aceptar`, crea su perfil sola) o rechazarla (`POST /api/invitaciones/{id}/rechazar`). Detalle completo, incluida la configuración de Supabase que necesita, en `docs/25`.
+- **Actualizado 2026-08-24 — esto ya se resolvió a medias.** Desde `docs/20` (HU-08) sí existe notificación **en bandeja** (`GET /api/notificaciones`, `PUT /api/notificaciones/{id}/marcar-leida`) para el flujo de solicitudes de eliminación: se genera sola al crear una solicitud, al aprobar/rechazar como gerente, y al aprobar/rechazar como admin. Lo que **sigue sin existir** es el correo: nadie recibe un email cuando pasa algo de esto, solo lo ve si entra a mirar su bandeja de notificaciones (o si el frontend implementa poll periódico, no hay websockets ni push). Si en algún momento quieres correo real acá también, sí sería backend nuevo (integrar un proveedor transaccional para este flujo específico, ver `docs/13`).
 - **No hay reenvío de invitación ni de código** documentado como flujo separado — se asume que el `signInWithOtp`/`resetPasswordForEmail` de Supabase se puede volver a llamar si el correo no llega, ya probado para el caso de login (ver `docs/12`, HU-01).
 
 ## 6. Resumen para diseñar las pantallas del frontend
@@ -88,8 +88,8 @@ Esto es lo que el frontend **no puede dar por hecho** que el backend resuelve, p
 | Login, veces siguientes (cualquier rol) | Supabase directamente (SDK) | Correo (recordado/prellenado) + contraseña → `signInWithPassword` |
 | Cambiar/recuperar contraseña (cualquier rol) | Supabase directamente (SDK) | Código por correo → `resetPasswordForEmail` + `verifyOtp(type: 'recovery')` + `updateUser({password})` — paso a paso: `docs/12`, HU-04 |
 | Después del login (cualquier rol) | `Nexit_Back` | Todas las pantallas de negocio (clientes, proveedores, proyectos, calendario, informes, usuarios, solicitudes de eliminación) usan el JWT de Supabase como `Bearer token` contra los endpoints ya documentados en `docs/06`, `docs/07` |
-| Alta de un nuevo miembro del equipo | Hoy: manual en el dashboard de Supabase + `POST /api/usuarios` | No hay pantalla de "invitar" automatizada todavía — si la quieres, es backend nuevo (ver sección 5) |
-| Notificar solicitudes de eliminación pendientes | `GET /api/solicitudes-eliminacion/pendientes-para-mi` (gerente) o `GET /api/solicitudes-eliminacion` (admin) | Sin correo — el frontend debe consultar activamente, no hay push |
+| Alta de un nuevo miembro del equipo | `Nexit_Back` (ver `docs/25`) | Super admin invita con `POST /api/invitaciones` (correo + rol + mensaje opcional); la persona invitada ve `GET /api/invitaciones/mia` al entrar por primera vez y acepta/rechaza -- si acepta, su perfil se crea solo |
+| Notificar solicitudes de eliminación pendientes | `GET /api/notificaciones/mias` (ver `docs/20`) | Ya llega como notificación en bandeja, generada sola; sin correo todavía, y sin push (el frontend puede seguir consultando `GET /api/solicitudes-eliminacion/pendientes-para-mi`/`GET /api/solicitudes-eliminacion` directamente si prefiere) |
 
 ## 7. Política de contraseñas (agregado 2026-08-23)
 
