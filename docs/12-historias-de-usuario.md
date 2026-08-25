@@ -363,12 +363,61 @@ El código está completo y probado. Falta el mismo paso externo que `docs/17` �
 
 ---
 
+## HU-12 — Ver qué compañeros están conectados ahora mismo (presencia en vivo)
+
+**Como** administrador (`admin`/`super_admin`), **quiero** ver quién tiene el sistema abierto en este momento (presencia en vivo, como en Microsoft Teams), **para** saber quién está trabajando ahora sin tener que preguntar por otro canal.
+
+Origen: pedido por WhatsApp el 24/8/2026, al hablar de los administradores normales (`administracion@agencianextmkt.com`, `andresacuna@agencianextmkt.com` — ver la nota de referencia abajo). Aclarado con la usuaria el 25/8/2026: no es el campo `activo` que ya existe (cuenta habilitada/dada de baja, ver `docs/06`/`docs/17`) — es presencia en tiempo real. Ver `docs/26-presencia-en-vivo-diseno.md` para el detalle completo y las preguntas de diseño que quedaron abiertas.
+
+### Estado del backend para esta historia: 🔴 Falta backend
+
+El JWT de Supabase es stateless — hoy no existe ningún mecanismo que rastree si alguien sigue con el sistema abierto (sin heartbeat, sin tabla de sesiones, sin WebSocket). Antes de escribir el modelo de datos o el endpoint, quedan preguntas de diseño abiertas (mecanismo de detección — polling vs. tiempo real, umbral de "desconectado", quién puede ver la presencia de quién, dónde se muestra) — ver `docs/26` para el detalle y la recomendación tentativa.
+
+---
+
+## HU-13 — Adjuntar archivos reales (PDF/Excel) a un proveedor
+
+**Como** cualquier persona con acceso a un proveedor, **quiero** poder subir un archivo real (PDF o Excel) como adjunto, además de poder seguir pegando un link externo, **para** guardar cotizaciones, fichas técnicas u otros documentos del proveedor directamente en el sistema, sin depender de un lugar externo.
+
+Ver `docs/28-subida-de-adjuntos-a-storage.md` para el diseño completo, incluida la aclaración de por qué subir archivos no hace más lenta la base de datos (nunca se guardan los bytes del archivo en Postgres, solo una referencia).
+
+### Flujo principal
+1. La persona entra al detalle de un proveedor y elige "adjuntar archivo" (a diferencia de "adjuntar link", que ya existía).
+2. Sube un archivo `.pdf`, `.xlsx` o `.xls` (`POST /api/proveedores/adjuntos/subir`, máximo 20 MB). El backend valida la extensión real (ignora lo que diga el navegador) y el tamaño antes de subirlo a Supabase Storage.
+3. El adjunto queda listado junto con los adjuntos tipo link, ya existentes.
+4. Para descargarlo, el frontend pide `GET /api/proveedores/adjuntos/{id}/descargar`, que devuelve una URL temporal (el archivo no es público — no se puede compartir el link directo con alguien fuera del sistema).
+5. Al eliminar el adjunto, el archivo también se borra de Storage — no queda huérfano.
+
+### Flujo alterno — extensión o tamaño no permitidos
+- Si el archivo no es `.pdf`/`.xlsx`/`.xls`, o pesa más de 20 MB, el backend lo rechaza antes de subirlo — el frontend debe mostrar el motivo exacto.
+
+### Criterios de aceptación
+- Un archivo con otra extensión (por ejemplo `.docx`, `.zip`, `.exe`) nunca se acepta, sin importar el `Content-Type` que mande el navegador.
+- Un archivo de más de 20 MB nunca se acepta.
+- Borrar un adjunto tipo archivo también borra el archivo real de Storage; borrar un adjunto tipo link nunca toca Storage (nunca tuvo un archivo ahí).
+- La URL de descarga de un archivo es temporal (firmada), no un link permanente.
+- Los adjuntos tipo link siguen funcionando exactamente igual que antes — esto es una opción adicional, no un reemplazo.
+
+### Notas técnicas
+- Esquema: columnas nuevas `content_type`/`tamano_bytes` en `proveedor_adjuntos` — migración de EF Core `AddAdjuntoContentTypeYTamano` (base local `nexit_dev`, ya aplicada el 2026-08-25; en producción se aplica junto con el resto del esquema al desplegar, ver la nota de `schema/01_esquema_completo.sql` en el índice).
+- Bucket de Supabase Storage `adjuntos-proveedores` ya creado en el proyecto real: privado, 20 MB por archivo, whitelist de tipos MIME como segunda capa de validación.
+- Usa las mismas claves de configuración que HU-11/HU-06 (`Supabase:ProjectUrl`, `Supabase:ServiceRoleKey`) — ya configuradas en `appsettings.Production.json`, no requiere nada adicional.
+
+### Estado del backend para esta historia: ✅ Completo
+
+234 pruebas en total (227 pasan sin necesitar Docker, 7 dependen de Docker en este entorno — mismas de siempre), 8 nuevas para esta historia, cero regresiones. Migración ya aplicada a `nexit_dev`; para producción se aplica al desplegar.
+
+---
+
 ## Nota de referencia (no es una historia, es contexto para cuando exista el Supabase real)
 
-La usuaria mencionó, al describir HU-01, una futura cuenta de administrador: `analistacompras@agencianextmkt.com` (dominio ya permitido). Todavía no se ha invitado ni registrado en ningún lado — con HU-11 ya se puede hacer en un solo paso desde `POST /api/invitaciones` cuando quieras, sin que esta nota requiera ninguna acción por sí sola.
+Cuentas de administrador ya mencionadas pero todavía no invitadas ni registradas en ningún lado (dominio ya permitido) — con HU-11 cada una se puede invitar en un solo paso desde `POST /api/invitaciones` cuando quieras, sin que esta nota requiera ninguna acción por sí sola:
+
+- `analistacompras@agencianextmkt.com` — mencionada al describir HU-01.
+- `administracion@agencianextmkt.com` y `andresacuna@agencianextmkt.com` — rol `admin`, confirmadas por WhatsApp el 24/8/2026 (mismo mensaje que pidió la presencia en vivo de HU-12 arriba).
 
 ## Próximas historias a escribir
 
 Siguiendo la estructura de `docs/11`: crear/editar/eliminar un cliente, crear/editar un proveedor (con adjuntos), crear/editar un proyecto (con equipo, proveedores asociados y bitácora de seguimiento, incluida la asignación del gerente responsable), ver el calendario, generar y exportar un informe, administrar catálogos, dar de alta un usuario, y el flujo completo de solicitud/aprobación/rechazo de eliminación (desde las tres perspectivas: quien solicita, el gerente que endosa, el admin que decide).
 
-Cada una de esas se escribirá con el mismo cierre de "Estado del backend" de arriba. Adelantando el veredicto según lo que ya se verificó en `docs/11` y `docs/10` (para no repetir la revisión historia por historia): casi todo el sistema — clientes, proveedores + adjuntos, proyectos + equipo + seguimiento + gerente, calendario, catálogos, informes, usuarios, las cuatro decisiones del flujo de solicitudes de eliminación (solicitar, endosar como gerente, aprobar/rechazar como admin), y desde HU-08 también notificaciones, historial de cambios y "mis proveedores" — ya tiene el código, la validación y el control de permisos completos y probados (163/170 pruebas, el resto depende de Docker en este entorno), así que esas historias deberían cerrar en ✅ o 🟡 (🟡 solo donde dependan de que exista el Supabase real, como los ejemplos de arriba). La única pieza que hoy cerraría en 🔴 (falta backend, no es solo un factor externo) es la que quedó anotada en `docs/10`, sección 5: un endpoint que invite y registre a alguien en un solo paso (hoy son dos acciones manuales separadas). Si te hace falta para una historia futura, se marca 🔴 y se prioriza escribir ese backend antes de esa pantalla, tal como pediste. También quedan pendientes de más definición (no de código ya identificado) el sistema de prioridad/sugerencias y las mejoras al informe semanal — ver `docs/20`.
+Cada una de esas se escribirá con el mismo cierre de "Estado del backend" de arriba. Adelantando el veredicto según lo que ya se verificó en `docs/11` y `docs/10` (para no repetir la revisión historia por historia): casi todo el sistema — clientes, proveedores + adjuntos, proyectos + equipo + seguimiento + gerente, calendario, catálogos, informes, usuarios, las cuatro decisiones del flujo de solicitudes de eliminación (solicitar, endosar como gerente, aprobar/rechazar como admin), y desde HU-08 también notificaciones, historial de cambios y "mis proveedores" — ya tiene el código, la validación y el control de permisos completos y probados (163/170 pruebas, el resto depende de Docker en este entorno), así que esas historias deberían cerrar en ✅ o 🟡 (🟡 solo donde dependan de que exista el Supabase real, como los ejemplos de arriba). Hay dos piezas que hoy cerrarían en 🔴 (falta backend, no es solo un factor externo): la presencia en vivo de HU-12 (arriba, ver `docs/26`), y — ya resuelta desde HU-11 — el que era el único hueco anotado en `docs/10`, sección 5 (invitar y registrar en un solo paso). También quedan pendientes de más definición (no de código ya identificado) el sistema de prioridad/sugerencias y las mejoras al informe semanal — ver `docs/20`.

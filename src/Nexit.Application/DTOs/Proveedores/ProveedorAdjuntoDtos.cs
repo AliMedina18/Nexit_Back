@@ -7,6 +7,8 @@ public class CrearProveedorAdjuntoDto
     public string? Url { get; set; }
     public string? StoragePath { get; set; }
     public string? Meta { get; set; }
+    public string? ContentType { get; set; }
+    public long? TamanoBytes { get; set; }
     public DateTime? Fecha { get; set; }
 }
 

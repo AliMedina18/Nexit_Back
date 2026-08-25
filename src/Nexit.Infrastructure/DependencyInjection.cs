@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddScoped<IInvitacionEquipoRepository, InvitacionEquipoRepository>();
         services.AddSingleton<IInformeExcelExporter, InformeExcelExporter>();
         services.AddScoped<ISupabaseAuthAdminService, SupabaseAuthAdminService>();
+        services.AddScoped<ISupabaseStorageService, SupabaseStorageService>();
         services.AddHostedService<EliminacionAutomaticaUsuariosInactivosService>();
         return services;
     }
