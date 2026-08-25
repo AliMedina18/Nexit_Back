@@ -1,5 +1,7 @@
 # Presencia en vivo — quién está conectado ahora mismo (propuesta, sin construir)
 
+> **Actualizado 2026-08-25: las preguntas de diseño abiertas de este documento ya se resolvieron y la historia ya se construyó — ver `docs/29-presencia-en-vivo-implementacion.md`.** Este documento queda como referencia histórica de cómo surgió el pedido y qué se evaluó, igual que `docs/19` frente a `docs/20`.
+
 ## Origen del pedido
 
 Mensaje de WhatsApp del compañero de equipo (+57 324 3146290), 24/8/2026, al hablar de las cuentas de administrador "normales" (`administracion@agencianextmkt.com`, `andresacuna@agencianextmkt.com` — ver la nota de referencia en `docs/12-historias-de-usuario.md`): pidió que esos administradores puedan "ver los usuarios en el sistema y si están activos... como en Teams".

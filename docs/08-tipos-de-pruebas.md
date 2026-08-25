@@ -121,31 +121,113 @@ catálogo de referencia de la industria para APIs.
   verificación de propiedad (`GerenteResponsableId != gerenteId`) ocurre siempre en el caso de uso, no
   solo en el frontend.
 
+## 5. Pruebas de arquitectura (`tests/Nexit.Tests/ArchitectureTests.cs`) — la capa nueva (2026-08-25)
+
+A diferencia de las cuatro capas anteriores, estas pruebas no verifican comportamiento de negocio —
+verifican que la **separación en capas de Clean Architecture se mantenga con el tiempo**, recorriendo
+por reflexión los ensamblados ya compilados (no el código fuente). Usan
+[NetArchTest.Rules](https://github.com/BenMorris/NetArchTest), una librería hecha exactamente para esto.
+
+**Por qué se agregaron — el bug real que las motivó:** al construir HU-12 (presencia en vivo), un caso
+de uso de `Nexit.Application` terminó con un `using Microsoft.EntityFrameworkCore;` para atrapar
+`DbUpdateConcurrencyException` — rompiendo la regla de que `Nexit.Application` no debe saber nada de la
+tecnología de persistencia concreta (eso es trabajo exclusivo de `Nexit.Infrastructure`, la única capa
+que debe importar Entity Framework Core). El error se descubrió recién al compilar, a mano, en la
+máquina de la usuaria. Estas pruebas convierten esa regla — que hasta ahora solo vivía "en la cabeza de
+quien programa" — en algo que `dotnet test` verifica solo, cada vez, sin depender de que alguien lo note
+en una revisión de código.
+
+Reglas verificadas hoy:
+- `Nexit.Core` no depende de `Nexit.Application`, `Nexit.Infrastructure` ni `Nexit.API`.
+- `Nexit.Application` no depende de `Nexit.Infrastructure` ni de `Nexit.API`.
+- `Nexit.Application` no depende directamente de `Microsoft.EntityFrameworkCore` (la regla puntual del
+  bug de arriba).
+- `Nexit.Infrastructure` no depende de `Nexit.API`.
+- Todo controlador (hereda de `ControllerBase`) vive en el namespace `Nexit.API.Controllers`.
+
+Son pruebas muy rápidas (no arrancan la aplicación ni tocan una base de datos) — se corren siempre,
+junto con las unitarias, en cada `dotnet test`.
+
+## Cobertura de código: cómo verla
+
+El proyecto ya recolecta datos de cobertura en cada corrida (paquete `coverlet.collector`, ya incluido
+en `Nexit.Tests.csproj`), pero hasta ahora nadie los convertía en un reporte legible. Para generar un
+reporte HTML navegable (qué líneas y qué ramas de código sí se ejecutaron durante las pruebas y cuáles
+no):
+
+```powershell
+# Una sola vez, para instalar la herramienta (queda guardada en el repo vía dotnet-tools.json)
+dotnet new tool-manifest
+dotnet tool install dotnet-reportgenerator-globaltool
+
+# Cada vez que quieras un reporte nuevo
+dotnet test tests/Nexit.Tests/Nexit.Tests.csproj --collect:"XPlat Code Coverage"
+dotnet reportgenerator -reports:"tests/Nexit.Tests/TestResults/*/coverage.cobertura.xml" -targetdir:"CoverageReport" -reporttypes:Html
+```
+
+Esto deja un `CoverageReport/index.html` que puedes abrir en el navegador. También se dejó
+`scripts/generar-reporte-cobertura.ps1`, que hace exactamente estos tres últimos pasos en un solo
+comando (`.\scripts\generar-reporte-cobertura.ps1` desde la raíz del repo, en PowerShell).
+
+No hay un porcentaje mínimo de cobertura exigido todavía (no tiene sentido imponer un número sin antes
+ver el reporte real una vez) — la recomendación es generarlo, revisarlo, y decidir con datos reales si
+hace falta reforzar alguna zona concreta.
+
+## Pruebas de mutación (opcional, no integradas al `dotnet test` normal)
+
+Las pruebas de mutación miden qué tan buenas son las pruebas que ya existen: introducen bugs pequeños a
+propósito en el código compilado (cambiar un `>` por un `>=`, invertir un `if`, etc. — cada uno se llama
+una "mutación") y revisan si alguna prueba se rompe. Si ninguna se rompe, esa prueba en teoría "cubre"
+esa línea pero en realidad no está verificando nada de verdad ahí.
+
+Se dejan documentadas como un chequeo **manual, periódico** (por ejemplo, antes de una release grande),
+no como parte de cada `dotnet test` — son mucho más lentas que el resto de la pirámide (corren la
+suite de pruebas una vez por cada mutación introducida) y no aportan tanto valor corriéndolas en cada
+cambio chico. Usa [Stryker.NET](https://stryker-mutator.io/docs/stryker-net/introduction/):
+
+```powershell
+dotnet tool install -g dotnet-stryker
+cd tests/Nexit.Tests
+dotnet-stryker
+```
+
+Genera un reporte HTML con el "mutation score" (% de mutaciones que sí detectó alguna prueba) por
+archivo. No hay que correrlo todavía —queda documentado para cuando la usuaria quiera un chequeo más a
+fondo antes de una release importante.
+
 ## Cómo correr cada capa
 
 ```bash
-# Todo (unitarias + integración + funcionales) — requiere Docker corriendo para las funcionales
+# Todo (unitarias + integración + funcionales + arquitectura) — requiere Docker para las funcionales
 dotnet test tests/Nexit.Tests/Nexit.Tests.csproj
 
 # Solo una capa
 dotnet test tests/Nexit.Tests/Nexit.Tests.csproj --filter "FullyQualifiedName~Functional"
 dotnet test tests/Nexit.Tests/Nexit.Tests.csproj --filter "FullyQualifiedName~Integration"
 dotnet test tests/Nexit.Tests/Nexit.Tests.csproj --filter "FullyQualifiedName~Security"
+dotnet test tests/Nexit.Tests/Nexit.Tests.csproj --filter "FullyQualifiedName~ArchitectureTests"
 
 # Análisis de dependencias vulnerables (recomendado antes de cada release)
 dotnet list package --vulnerable --include-transitive
+
+# Reporte de cobertura (ver la sección de arriba)
+.\scripts\generar-reporte-cobertura.ps1
 ```
 
-Estado al cerrar esta sesión: **118/118 pruebas pasando** (unitarias + integración + funcionales +
-seguridad), 0 advertencias de compilación, 0 paquetes vulnerables.
+Estado al cerrar esta sesión (2026-08-18): **118/118 pruebas pasando** (unitarias + integración +
+funcionales + seguridad), 0 advertencias de compilación, 0 paquetes vulnerables. **Actualizado
+2026-08-25:** el número real de pruebas creció bastante desde entonces con cada historia nueva (adjuntos,
+presencia, arquitectura) — ver `docs/README.md` para el conteo más reciente reportado por la usuaria en
+cada `dotnet test`, este documento no se actualiza número por número para no quedar desactualizado.
 
 ## Qué queda fuera del alcance de este backend (y por qué)
 
 Para ser transparente sobre los límites de esta capa de pruebas: no incluye pruebas de carga/rendimiento
 (cuántas peticiones simultáneas aguanta el servidor bajo estrés sostenido — distinto del límite de
 peticiones por usuario, que sí se prueba), ni un escaneo dinámico de seguridad (DAST, tipo OWASP ZAP,
-que ataca la aplicación ya desplegada desde afuera), ni pruebas de mutación (que miden qué tan buenas
-son las pruebas existentes introduciendo bugs a propósito y viendo si los detectan). Ninguna de las tres
-es indispensable para el tamaño y el uso actual de este sistema (una agencia, no un producto masivo),
-pero quedan anotadas aquí como próximos pasos razonables si el sistema crece o se expone directamente a
-internet sin capas adicionales (WAF, etc.) por delante.
+que ataca la aplicación ya desplegada desde afuera). Ninguna de las dos es indispensable para el tamaño y
+el uso actual de este sistema (una agencia, no un producto masivo, 20-25 usuarios), pero quedan anotadas
+aquí como próximos pasos razonables si el sistema crece o se expone directamente a internet sin capas
+adicionales (WAF, etc.) por delante. Las pruebas de mutación, que también estaban en esta lista, ya se
+documentaron arriba como chequeo manual opcional — dejaron de estar "fuera de alcance" para pasar a
+"disponibles, pero no obligatorias en cada corrida".

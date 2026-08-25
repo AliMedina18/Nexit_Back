@@ -135,9 +135,9 @@ Esta historia sí depende directamente de código de `Nexit_Back`, y ya está co
 - La plantilla de correo "Restablecer contraseña" es una plantilla **distinta** de "Enlace mágico o OTP" dentro del dashboard de Supabase, ya diseñada con el mismo estilo — ver `docs/15-plantilla-correo-restablecer-contrasena.md` y `docs/plantilla_correo_restablecer_contrasena.html`.
 - La política de contraseña (paso 5) es la misma que HU-01 — ver `docs/10-correos-autenticacion-y-guia-frontend.md`, sección 7: mínimo 10 caracteres, mayúscula, minúscula, número y símbolo, configurada en Supabase (Authentication → Sign In / Providers → Email) y espejada en el frontend.
 
-### Estado del backend para esta historia: 🟡 Backend listo en código, pendiente de un factor externo
+### Estado del backend para esta historia: ✅ Completo
 
-Igual que HU-01/HU-02 antes de esta actualización: el mecanismo (`resetPasswordForEmail` + `verifyOtp` con `type: 'recovery'` + `updateUser`) es Supabase Auth puro, cero código nuevo en `Nexit_Back`. **Actualizado 2026-08-23:** ya está lista la plantilla de correo "Restablecer contraseña" con el mismo diseño de HU-01 (`docs/15`), y ya está definida y documentada la política de contraseña (sección 7 de `docs/10`) que faltaba especificar. Lo único que queda pendiente, puramente externo, es: (1) que pegues la plantilla nueva en el dashboard de Supabase, (2) que ajustes ahí mismo el "Password Requirements" a la regla completa (hoy solo tienes la longitud mínima puesta), y (3) probar el flujo real disparando un `resetPasswordForEmail` y confirmando que el código llega y funciona — igual que ya se probó con HU-01/HU-02. Avísame cuando hagas (1) y (2) y disparo la prueba de (3) de inmediato. En cuanto se confirme, esta historia pasa a ✅ sin tocar `Nexit_Back`.
+Igual que HU-01/HU-02: el mecanismo (`resetPasswordForEmail` + `verifyOtp` con `type: 'recovery'` + `updateUser`) es Supabase Auth puro, cero código nuevo en `Nexit_Back`. **Actualizado 2026-08-25:** se probó el flujo real de punta a punta contra `analistacompras@agencianextmkt.com` — la plantilla "Restablecer contraseña" ya está pegada en el dashboard (con el diseño de `docs/15`), el correo llegó bien formateado, el código se verificó correctamente contra Supabase (`verifyOtp` con `type: 'recovery'`), y la política de contraseña completa ya está activa (longitud mínima 10 + "Password Requirements: Lowercase, uppercase letters, digits and symbols"). No queda nada pendiente para esta historia.
 
 ---
 
@@ -168,9 +168,9 @@ Esta historia es distinta a las anteriores: no la dispara una acción que el fro
 - Esta plantilla no usa `{{ .Token }}` — su única variable es `{{ .Email }}`. Ver `docs/16-plantilla-correo-contrasena-cambiada.md` para el detalle completo y por qué el tono es distinto al de las otras dos.
 - Vive en una sección separada del dashboard de Supabase ("Security notifications"), no junto a las plantillas de autenticación normales.
 
-### Estado del backend para esta historia: 🟡 Backend listo en código, pendiente de un factor externo
+### Estado del backend para esta historia: ✅ Completo
 
-Igual que HU-04: cero código nuevo en `Nexit_Back` — esto es 100% Supabase Auth disparando un correo por su cuenta. **Actualizado 2026-08-23:** ya activaste la notificación de seguridad, y ya está lista la plantilla con el diseño de marca (`docs/16`). Falta: (1) pegar el HTML en Supabase (igual que las otras dos plantillas), y (2) la prueba real — que sí requiere completar un cambio de contraseña de verdad (ver `docs/16`, sección "Cómo se prueba de verdad", incluye una decisión pendiente tuya sobre qué cuenta y qué contraseña usar para esa prueba). En cuanto se confirme que el correo llega bien, esta historia pasa a ✅.
+Igual que HU-04: cero código nuevo en `Nexit_Back` — esto es 100% Supabase Auth disparando un correo por su cuenta. **Actualizado 2026-08-25:** se completó la prueba real de punta a punta — se disparó un `resetPasswordForEmail` real contra `analistacompras@agencianextmkt.com`, se verificó el código, y se cambió la contraseña de verdad (`updateUser({password})`) con la sesión de recuperación. Ese cambio disparó automáticamente el correo "Password changed" con la plantilla de `docs/16`, confirmado recibido. No queda nada pendiente para esta historia. **Nota:** con esta prueba, la contraseña real de `analistacompras@agencianextmkt.com` (super_admin) quedó actualizada.
 
 ---
 
@@ -203,9 +203,9 @@ Ver `docs/17-eliminacion-automatica-usuarios.md` para el diseño completo y la i
 - Sin pantalla nueva que diseñar para el paso 4 (el automático) — no es un flujo que el frontend dispare, corre solo dentro del backend.
 - El frontend puede mostrar, en la pantalla de usuarios, algo como "se elimina automáticamente el [FechaDesactivacion + 30 días]" para cualquier cuenta desactivada — el campo `FechaDesactivacion` ya viene en la respuesta de `GET /api/usuarios`.
 
-### Estado del backend para esta historia: 🟡 Backend listo en código, pendiente de un factor externo
+### Estado del backend para esta historia: ✅ Completo
 
-El código ya está completo, compilado y con pruebas (127 pruebas totales — 120 pasan sin necesitar Docker/base de datos real, incluidas las nuevas de esta historia; las 7 restantes son funcionales que sí necesitan Docker, mismas de siempre, no relacionadas con esto). Lo que falta es puramente externo — dos scripts SQL por correr en tu Supabase real (ver `docs/17`, sección 7): `docs/schema/06_eliminacion_automatica_usuarios.sql` (columna nueva + tabla de respaldo) y volver a correr `docs/schema/03_auth_hook_custom_claims.sql` (se actualizó para revisar `activo`). Opcional: configurar la Service Role Key para que la cuenta de Supabase Auth también se elimine sola (si no, el perfil de negocio sí se elimina igual, solo queda pendiente borrar la cuenta de Auth a mano). En cuanto corras esos dos scripts, esta historia pasa a ✅.
+El código ya está completo, compilado y con pruebas (127 pruebas totales — 120 pasan sin necesitar Docker/base de datos real, incluidas las nuevas de esta historia; las 7 restantes son funcionales que sí necesitan Docker, mismas de siempre, no relacionadas con esto). **Actualizado 2026-08-25:** se verificó directamente contra el Supabase real (consulta a la API REST) que los dos scripts ya corrieron — la columna `fecha_desactivacion` y la tabla `usuarios_eliminados` ya existen en producción — y la Service Role Key ya está configurada desde el fix de `docs/27`, así que la cuenta de Supabase Auth también se elimina sola. No queda nada pendiente para esta historia.
 
 ---
 
@@ -369,9 +369,27 @@ El código está completo y probado. Falta el mismo paso externo que `docs/17` �
 
 Origen: pedido por WhatsApp el 24/8/2026, al hablar de los administradores normales (`administracion@agencianextmkt.com`, `andresacuna@agencianextmkt.com` — ver la nota de referencia abajo). Aclarado con la usuaria el 25/8/2026: no es el campo `activo` que ya existe (cuenta habilitada/dada de baja, ver `docs/06`/`docs/17`) — es presencia en tiempo real. Ver `docs/26-presencia-en-vivo-diseno.md` para el detalle completo y las preguntas de diseño que quedaron abiertas.
 
-### Estado del backend para esta historia: 🔴 Falta backend
+### Flujo principal
 
-El JWT de Supabase es stateless — hoy no existe ningún mecanismo que rastree si alguien sigue con el sistema abierto (sin heartbeat, sin tabla de sesiones, sin WebSocket). Antes de escribir el modelo de datos o el endpoint, quedan preguntas de diseño abiertas (mecanismo de detección — polling vs. tiempo real, umbral de "desconectado", quién puede ver la presencia de quién, dónde se muestra) — ver `docs/26` para el detalle y la recomendación tentativa.
+1. Mientras haya una sesión abierta, el frontend llama `POST /api/presencia/ping` cada 45-60 segundos (cualquier persona autenticada, no solo administradores — todos "dejan huella" para que los administradores los vean).
+2. Un administrador (`admin`/`super_admin`) entra a la vista de presencia; el frontend llama `GET /api/presencia`.
+3. Ve la lista de cuentas activas, cada una marcada como en línea o no, según si su último ping cayó dentro del umbral configurado (2 minutos por defecto) — los conectados aparecen primero.
+
+### Criterios de aceptación
+
+- Alguien cuyo último ping fue hace más de `Presencia:UmbralMinutos` aparece como desconectado.
+- Alguien que nunca ha hecho ping aparece como desconectado (nunca "en línea" por defecto).
+- Una cuenta desactivada nunca aparece en el directorio, aunque haya hecho ping antes de desactivarse.
+- Solo `admin`/`super_admin` pueden consultar `GET /api/presencia`; cualquier persona autenticada puede hacer `POST /api/presencia/ping`.
+- Un ping a una cuenta que ya no existe no debe hacer fallar la sesión del frontend.
+
+### Notas técnicas
+
+Ver `docs/29-presencia-en-vivo-implementacion.md` para la investigación completa (cómo lo resuelven otros sistemas), la decisión de usar un heartbeat propio en vez de Supabase Realtime Presence (y por qué), y la respuesta a las tres preguntas de diseño que había dejado abiertas `docs/26`. Esquema: columna nueva `ultima_actividad` en `usuarios` — migración de EF Core `AddPresenciaUsuarios`.
+
+### Estado del backend para esta historia: 🟡 Backend listo en código, pendiente de compilar/probar
+
+Código completo: entidad (`Usuario.UltimaActividad`), casos de uso (`RegistrarPresenciaUseCase`, `ConsultarPresenciaUseCase`), controlador (`PresenciaController`, `POST /ping` y `GET` con la política `AdminOrAbove`), y 6 pruebas nuevas (`PresenciaTests.cs`). Falta el mismo paso que en `docs/28`: generar y aplicar la migración (`dotnet ef migrations add AddPresenciaUsuarios`), compilar y correr las pruebas en tu máquina, y aplicarla a `nexit_dev` (`dotnet ef database update`) — no pude hacerlo yo misma por la misma limitación de siempre (sin SDK de .NET en el entorno donde edito tus archivos). En cuanto confirmes que compiló y las pruebas pasan, esta historia pasa a ✅.
 
 ---
 

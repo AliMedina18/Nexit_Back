@@ -10,6 +10,7 @@ using Nexit.Application.UseCases.SolicitudesEliminacion;
 using Nexit.Application.UseCases.Notificaciones;
 using Nexit.Application.UseCases.Historial;
 using Nexit.Application.UseCases.Invitaciones;
+using Nexit.Application.UseCases.Presencia;
 
 namespace Nexit.Application;
 
@@ -61,6 +62,8 @@ public static class DependencyInjection
         services.AddScoped<IConsultarMiInvitacionUseCase, ConsultarMiInvitacionUseCase>();
         services.AddScoped<IAceptarInvitacionUseCase, AceptarInvitacionUseCase>();
         services.AddScoped<IRechazarInvitacionUseCase, RechazarInvitacionUseCase>();
+        services.AddScoped<IRegistrarPresenciaUseCase, RegistrarPresenciaUseCase>();
+        services.AddScoped<IConsultarPresenciaUseCase, ConsultarPresenciaUseCase>();
         return services;
     }
 }
