@@ -53,10 +53,12 @@ try
     });
     // Modelo de 4 roles (super_admin > admin > manager > miembro) — ver docs/06-modelo-permisos-roles.md.
     // El claim de rol (app_role/user_role) lo agrega el Auth Hook de Supabase — ver docs/schema/03_auth_hook_custom_claims.sql.
-    // "SuperAdminOnly": únicamente la super administradora administra usuarios (crear/ver/editar/eliminar).
-    // "AdminOrAbove": administración directa de catálogos, y eliminación directa (sin pasar por una
+    // "SuperAdminOnly": únicamente la super administradora crea/edita/elimina usuarios (ver el
+    // directorio o un perfil individual ya NO es exclusivo de este rol -- ver UsuariosController).
+    // "AdminOrAbove": administración directa de catálogos, eliminación directa (sin pasar por una
     // solicitud) de clientes/proveedores/proyectos/adjuntos — gerentes y miembros pasan por el flujo
-    // de solicitudes de eliminación (SolicitudesEliminacionController) en vez de este atajo.
+    // de solicitudes de eliminación (SolicitudesEliminacionController) en vez de este atajo -- y (desde
+    // 2026-08-26) listar el directorio completo de usuarios.
     bool HasRole(System.Security.Claims.ClaimsPrincipal user, string role) =>
         user.IsInRole(role) || user.HasClaim("app_role", role) || user.HasClaim("user_role", role);
     // Eliminación automática de usuarios inactivos (ver docs/17-eliminacion-automatica-usuarios.md):
@@ -106,6 +108,15 @@ try
             return RateLimitPartition.GetFixedWindowLimiter(partitionKey,
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimiting:PermitLimit", 100), Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true });
         });
+        // GET /api/auth/estado-cuenta (docs/30) es el único endpoint público (sin sesión) de toda
+        // la API -- por eso no puede usar la política "api" de arriba (esa parte por usuario
+        // autenticado, y aquí nunca hay uno). Se limita por IP, mucho más estricto que el fallback
+        // por IP de "api" (100/min): es un endpoint que, por su naturaleza, confirma o descarta
+        // correos, así que un límite generoso lo dejaría abierto a enumerar cuentas de la
+        // organización probando una por una.
+        options.AddPolicy("auth-anon", context =>
+            RateLimitPartition.GetFixedWindowLimiter($"auth-anon:{context.Connection.RemoteIpAddress}",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimiting:AuthAnonPermitLimit", 8), Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
     });
     builder.Services.AddControllers();
     builder.Services.AddSwaggerGen(options =>

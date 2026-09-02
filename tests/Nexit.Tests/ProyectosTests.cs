@@ -152,4 +152,39 @@ public class ProyectosTests
 
         Assert.Equal(nuevoGerenteId, result.GerenteId);
     }
+
+    [Fact]
+    public async Task ConsultarSeguimiento_returns_the_full_log_newest_first()
+    {
+        // Bug real encontrado al conectar el frontend (2026-08-26): antes solo existía el POST
+        // para agregar una entrada nueva a la bitácora, sin ningún GET para listar las que ya había.
+        var proyectos = new Mock<IProyectoRepository>();
+        var proyectoId = Guid.NewGuid();
+        var proyecto = new Proyecto
+        {
+            Id = proyectoId,
+            Nombre = "Lanzamiento",
+            Seguimiento =
+            [
+                new ProyectoSeguimiento { ProyectoId = proyectoId, Area = "Logística", Nota = "Primera nota", Fecha = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc) },
+                new ProyectoSeguimiento { ProyectoId = proyectoId, Area = "Producción", Nota = "Nota más reciente", Fecha = new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Utc) },
+            ],
+        };
+        proyectos.Setup(x => x.GetByIdAsync(proyectoId, It.IsAny<CancellationToken>())).ReturnsAsync(proyecto);
+
+        var result = await new ConsultarSeguimientoProyectoUseCase(proyectos.Object).ExecuteAsync(proyectoId);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("Nota más reciente", result[0].Nota);
+        Assert.Equal("Primera nota", result[1].Nota);
+    }
+
+    [Fact]
+    public async Task ConsultarSeguimiento_throws_when_the_project_does_not_exist()
+    {
+        var proyectos = new Mock<IProyectoRepository>();
+        proyectos.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Proyecto?)null);
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(() => new ConsultarSeguimientoProyectoUseCase(proyectos.Object).ExecuteAsync(Guid.NewGuid()));
+    }
 }

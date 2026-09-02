@@ -104,6 +104,16 @@ public class AgregarSeguimientoProyectoUseCase(IProyectoRepository repository, I
     }
 }
 
+/// <summary>Lista la bitácora completa de un proyecto (docs/29 -- gap encontrado al conectar el frontend: antes solo existía el POST para agregar, sin GET para listar lo que ya había).</summary>
+public class ConsultarSeguimientoProyectoUseCase(IProyectoRepository repository) : IConsultarSeguimientoProyectoUseCase
+{
+    public async Task<IReadOnlyList<SeguimientoProyectoDto>> ExecuteAsync(Guid proyectoId, CancellationToken ct = default)
+    {
+        var proyecto = await repository.GetByIdAsync(proyectoId, ct) ?? throw new EntityNotFoundException("Proyecto", proyectoId);
+        return proyecto.Seguimiento.OrderByDescending(s => s.Fecha).Select(ProyectoMapper.ToResponse).ToList();
+    }
+}
+
 internal static class ProyectoMapper
 {
     public static Proyecto ToEntity(CrearProyectoDto dto) { var entity = new Proyecto(); Apply(dto, entity); return entity; }

@@ -11,6 +11,7 @@ using Nexit.Application.UseCases.Notificaciones;
 using Nexit.Application.UseCases.Historial;
 using Nexit.Application.UseCases.Invitaciones;
 using Nexit.Application.UseCases.Presencia;
+using Nexit.Application.UseCases.Auth;
 
 namespace Nexit.Application;
 
@@ -36,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<IConsultarProyectosUseCase, ConsultarProyectosUseCase>();
         services.AddScoped<IEliminarProyectoUseCase, EliminarProyectoUseCase>();
         services.AddScoped<IAgregarSeguimientoProyectoUseCase, AgregarSeguimientoProyectoUseCase>();
+        services.AddScoped<IConsultarSeguimientoProyectoUseCase, ConsultarSeguimientoProyectoUseCase>();
         services.AddScoped<IConsultarCalendarioProyectosUseCase, ConsultarCalendarioProyectosUseCase>();
         services.AddScoped<IConsultarPrioridadProyectosUseCase, ConsultarPrioridadProyectosUseCase>();
         services.AddScoped<IConsultarInformesUseCase, ConsultarInformesUseCase>();
@@ -64,6 +66,8 @@ public static class DependencyInjection
         services.AddScoped<IRechazarInvitacionUseCase, RechazarInvitacionUseCase>();
         services.AddScoped<IRegistrarPresenciaUseCase, RegistrarPresenciaUseCase>();
         services.AddScoped<IConsultarPresenciaUseCase, ConsultarPresenciaUseCase>();
+        services.AddScoped<IConsultarEstadoCuentaUseCase, ConsultarEstadoCuentaUseCase>();
+        services.AddScoped<IConfirmarContrasenaConfiguradaUseCase, ConfirmarContrasenaConfiguradaUseCase>();
         return services;
     }
 }

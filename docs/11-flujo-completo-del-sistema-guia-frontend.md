@@ -12,12 +12,12 @@ Ya está documentado a fondo en `docs/10-correos-autenticacion-y-guia-frontend.m
 
 | Rol | Puede | No puede |
 |---|---|---|
-| `super_admin` | Todo, incluida la tabla `usuarios` (crear/editar/desactivar/eliminar cuentas) | — |
-| `admin` | Todo excepto `usuarios`; administra catálogos; decide (aprueba/rechaza) solicitudes de eliminación de clientes/proveedores/proyectos; elimina directamente catálogos y adjuntos | Gestionar usuarios |
-| `manager` (gerente) | Crear/ver/editar clientes, proveedores, proyectos; puede ser el "dueño" (`GerenteId`) de uno o más proyectos, y si lo es, endosa o rechaza solicitudes de eliminación de esos proyectos | Eliminar directamente clientes/proveedores/proyectos (pasa por solicitud); gestionar usuarios ni catálogos |
-| `miembro` | Crear/ver/editar clientes, proveedores, proyectos | Eliminar directamente nada de eso (pasa por solicitud); gestionar usuarios ni catálogos |
+| `super_admin` | Todo, incluida la *gestión* (crear/editar/desactivar/eliminar) de la tabla `usuarios` | — |
+| `admin` | Todo lo de `manager`/`miembro`, más ver (no gestionar) el directorio completo de `usuarios`; administra catálogos; decide (aprueba/rechaza) solicitudes de eliminación de clientes/proveedores/proyectos; elimina directamente catálogos y adjuntos | Crear, editar o eliminar usuarios |
+| `manager` (gerente) | Crear/ver/editar clientes, proveedores, proyectos; puede ser el "dueño" (`GerenteId`) de uno o más proyectos, y si lo es, endosa o rechaza solicitudes de eliminación de esos proyectos; ver el perfil individual (solo lectura) de cualquier compañero | Eliminar directamente clientes/proveedores/proyectos (pasa por solicitud); gestionar usuarios ni catálogos; ver el directorio completo de usuarios |
+| `miembro` | Crear/ver/editar clientes, proveedores, proyectos; ver el perfil individual (solo lectura) de cualquier compañero | Eliminar directamente nada de eso (pasa por solicitud); gestionar usuarios ni catálogos; ver el directorio completo de usuarios |
 
-Dos políticas de autorización cubren todo esto en el código: `SuperAdminOnly` (solo `usuarios`) y `AdminOrAbove` (`admin` o `super_admin`, para catálogos, informes, eliminación directa). Todo lo demás solo exige estar autenticado, sin importar el rol.
+Dos políticas de autorización cubren todo esto en el código: `SuperAdminOnly` (crear/editar/eliminar en `usuarios` -- ver sección 8) y `AdminOrAbove` (`admin` o `super_admin`, para catálogos, informes, eliminación directa, y listar el directorio completo de `usuarios`). Todo lo demás solo exige estar autenticado, sin importar el rol -- incluido ver el perfil individual de cualquier persona en `usuarios` (sección 8).
 
 ## 2. Clientes — `/api/clientes`
 
@@ -61,6 +61,7 @@ Cada proveedor puede tener adjuntos de dos tipos: `link` (una URL — debe ser `
 | Crear / editar | `POST` / `PUT /api/proyectos/{id}` | Cualquier autenticado (con la excepción del gerente, ver abajo) |
 | Eliminar directo | `DELETE /api/proyectos/{id}` | Solo `AdminOrAbove` — resto usa solicitud |
 | Agregar una nota de seguimiento | `POST /api/proyectos/{id}/seguimiento` | Cualquier autenticado |
+| Ver la bitácora completa de seguimiento | `GET /api/proyectos/{id}/seguimiento` | Cualquier autenticado |
 
 **Campos:** `nombre` (obligatorio), `clienteId` (opcional, debe existir), `contactoProyecto`, `tipoProyecto` (opcional: `Corporativo` / `Evento social`), `prioridad` (opcional: `Alta` / `Media` / `Baja`), `ciudad` (texto libre, no ligado a catálogo), `sedeNext` (sede de Next que atiende), `fechaSolicitud`, `fechaEvento` (esta es la fecha que usa el calendario, sección 5), `estadoId` (obligatorio, catálogo de estados — ver sección 6), `porcentajeAvance` (0-100), `estadoBrief` (uno de `Pendiente por enviar` / `Entregado, a espera de respuesta` / `Requiere ajustes` / `Aprobado`, default `Pendiente por enviar`), `propuestaEstado` (uno de `No enviada` / `En proceso` / `Enviada`, default `No enviada`), `numeroFactura`, `pagado` (booleano — si es `true`, `fechaPago` pasa a ser obligatoria), `fechaPago`, `notas`, `gerenteId` (ver abajo), `equipo` (lista de `{id?, rol, nombre}` — `rol` debe ser uno de `Ejecutivo` / `Comercial` / `Administrativo` / `Diseñador 3D` / `Diseñador gráfico`; `nombre` aquí es texto libre, **no** un `usuarioId` — a propósito, porque no todo responsable de un proyecto tiene cuenta en el sistema), y `proveedorIds` (lista de IDs de proveedores asociados al proyecto).
 
@@ -72,7 +73,7 @@ Igual que en clientes/proveedores, `equipo` y `proveedorIds` se **reemplazan por
 
 ### 4.1. Bitácora de seguimiento del proyecto
 
-`POST /api/proyectos/{id}/seguimiento` agrega una nota (no reemplaza nada, esta sí es un historial que crece — a diferencia de teléfonos/equipo). Campos: `area` (uno de `General` / `Creativo` / `Comercial` / `Administrativo`), `fecha` (opcional, default ahora), `nota` (obligatoria). Queda registrado quién la escribió (`autorId`, el usuario autenticado) y cuándo. No hay endpoint para editar ni borrar una nota de seguimiento ya creada — es un historial de solo-agregar.
+`POST /api/proyectos/{id}/seguimiento` agrega una nota (no reemplaza nada, esta sí es un historial que crece — a diferencia de teléfonos/equipo). Campos: `area` (uno de `General` / `Creativo` / `Comercial` / `Administrativo`), `fecha` (opcional, default ahora), `nota` (obligatoria). Queda registrado quién la escribió (`autorId`, el usuario autenticado) y cuándo. No hay endpoint para editar ni borrar una nota de seguimiento ya creada — es un historial de solo-agregar. `GET /api/proyectos/{id}/seguimiento` (agregado 2026-08-26) devuelve esa bitácora completa, más reciente primero — antes solo existía el POST, sin forma de listarla.
 
 ## 5. Calendario de proyectos — `/api/calendario`
 
@@ -110,9 +111,18 @@ Todos los `GET` son para cualquier autenticado (para poblar selects en los formu
 
 `GET /api/informes/snapshots/{tipo}/{periodoKey}` y su versión `/exportar` — recupera un snapshot ya guardado (los datos quedan congelados tal como estaban al momento de crearlo, no se recalculan).
 
-## 8. Usuarios — `/api/usuarios` (todo el controlador es `SuperAdminOnly`)
+## 8. Usuarios — `/api/usuarios` (tres niveles de acceso, ver abajo)
+
+| Acción | Método | Quién |
+|---|---|---|
+| Ver el directorio completo | `GET /api/usuarios` | `AdminOrAbove` (`admin`/`super_admin`) |
+| Ver mi propio perfil | `GET /api/usuarios/me` | Cualquier autenticado |
+| Ver el perfil de otra persona | `GET /api/usuarios/{id}` | Cualquier autenticado, solo lectura |
+| Crear / editar / eliminar | `POST` / `PUT /api/usuarios/{id}` / `DELETE /api/usuarios/{id}` | `SuperAdminOnly` |
 
 Ver `docs/10-correos-autenticacion-y-guia-frontend.md` para el detalle completo de por qué crear un usuario aquí no envía ningún correo (la invitación ya pasó antes, en Supabase). Campos de `POST`: `id` (el UUID que Supabase le asignó a la cuenta al aceptar la invitación — no lo genera este backend), `nombre`, `apellido`, `email` (único, debe ser de un dominio permitido), `rol` (uno de los 4), `iniciales` (opcional, para mostrar un avatar con iniciales en vez de foto), `activo`.
+
+**Actualizado 2026-08-26 — ver ya no es exclusivo de `super_admin`:** `GET /api/usuarios/me` (perfil propio) y `GET /api/usuarios/{id}` (perfil de cualquier otra persona) están abiertos a cualquier autenticado, sin importar el rol — el mismo patrón que el directorio de personas de Microsoft Teams: cualquiera puede mirar el perfil de un compañero (nombre, apellido, rol, iniciales), pero no editarlo ni eliminarlo, eso sigue siendo `SuperAdminOnly`. Además, `admin` (no solo `super_admin`) ahora puede pedir el directorio completo con `GET /api/usuarios`. Antes de este cambio, `UsuariosController` completo era `SuperAdminOnly` y nadie más podía ver ni su propio perfil. Si la cuenta consultada todavía no tiene fila de negocio en `usuarios` (recién invitada, o sembrada a mano), cualquiera de estos `GET` responde `404`.
 
 Protecciones que el frontend debe reflejar en la UI (deshabilitar el botón, no solo esperar el error): nadie puede desactivarse a sí mismo, ni quitarse a sí mismo el rol `super_admin`, ni eliminar su propia cuenta — el backend responde `403` si se intenta.
 

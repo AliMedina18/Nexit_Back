@@ -45,6 +45,7 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.HasIndex(x => x.Email).IsUnique();
             entity.Property(x => x.Email).HasMaxLength(255);
             entity.Property(x => x.Rol).HasDefaultValue("miembro"); entity.Property(x => x.Activo).HasDefaultValue(true); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()"); entity.Property(x => x.UpdatedAt).HasDefaultValueSql("now()");
+            entity.Property(x => x.ContrasenaConfigurada).HasColumnName("contrasena_configurada").HasDefaultValue(false);
         });
         modelBuilder.Entity<UsuarioEliminado>(entity =>
         {

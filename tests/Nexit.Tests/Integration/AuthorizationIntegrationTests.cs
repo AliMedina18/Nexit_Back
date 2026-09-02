@@ -89,13 +89,13 @@ public class AuthorizationIntegrationTests(NexitApiFactory factory) : IClassFixt
         Assert.Equal("DENY", response.Headers.GetValues("X-Frame-Options").First());
     }
 
-    // Modelo de 4 roles (docs/06-modelo-permisos-roles.md) — la gestión de usuarios es exclusiva del
-    // super administrador; ni siquiera un administrador normal puede ver esa parte.
+    // Modelo de 4 roles (docs/06-modelo-permisos-roles.md, sección 6) — listar el directorio
+    // completo es AdminOrAbove desde 2026-08-26 (antes era exclusivo de super_admin); manager y
+    // miembro siguen sin poder verlo.
     [Theory]
     [InlineData("miembro")]
     [InlineData("manager")]
-    [InlineData("admin")]
-    public async Task GetUsuarios_with_anything_less_than_super_admin_returns_403(string role)
+    public async Task GetUsuarios_with_manager_or_miembro_returns_403(string role)
     {
         _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
         _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, role);
@@ -105,13 +105,35 @@ public class AuthorizationIntegrationTests(NexitApiFactory factory) : IClassFixt
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
-    public async Task GetUsuarios_with_super_admin_role_passes_authorization()
+    [Theory]
+    [InlineData("admin")]
+    [InlineData("super_admin")]
+    public async Task GetUsuarios_with_admin_or_super_admin_role_passes_authorization(string role)
     {
         _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
-        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, "super_admin");
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, role);
 
         var response = await _client.GetAsync("/api/usuarios");
+
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    // GetById (perfil individual, agregado 2026-08-26) es de lectura libre para cualquier
+    // autenticado -- ver el perfil de otra persona no es "gestionar usuarios" (eso sigue siendo
+    // crear/editar/eliminar, exclusivo de super_admin). Cubierto a fondo (con datos reales) en
+    // UsuariosFunctionalTests -- aquí solo se confirma que la autorización no lo bloquea.
+    [Theory]
+    [InlineData("miembro")]
+    [InlineData("manager")]
+    [InlineData("admin")]
+    [InlineData("super_admin")]
+    public async Task GetUsuarioById_with_any_authenticated_role_is_not_blocked_by_authorization(string role)
+    {
+        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, role);
+
+        var response = await _client.GetAsync($"/api/usuarios/{Guid.NewGuid()}");
 
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);

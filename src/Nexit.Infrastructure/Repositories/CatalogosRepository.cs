@@ -28,6 +28,24 @@ public class CatalogosRepository(NexitDbContext context) : ICatalogosRepository
     public Task<EstadoProyecto?> GetEstadoAsync(Guid id, CancellationToken cancellationToken = default) => context.EstadosProyecto.FindAsync([id], cancellationToken).AsTask();
     public Task<bool> NombreExisteAsync<T>(string nombre, Guid? excludeId = null, CancellationToken cancellationToken = default) where T : class =>
         context.Set<T>().AnyAsync(x => EF.Property<string>(x, "Nombre").ToLower() == nombre.ToLower() && (!excludeId.HasValue || EF.Property<Guid>(x, "Id") != excludeId.Value), cancellationToken);
+
+    public async Task<Guid?> FindPaisIdPorNombreAsync(string nombre, CancellationToken cancellationToken = default) =>
+        (await context.Paises.AsNoTracking().FirstOrDefaultAsync(x => x.Nombre.ToLower() == nombre.Trim().ToLower(), cancellationToken))?.Id;
+
+    public async Task<Guid?> FindCategoriaIdPorNombreAsync(string nombre, CancellationToken cancellationToken = default) =>
+        (await context.CategoriasProveedor.AsNoTracking().FirstOrDefaultAsync(x => x.Nombre.ToLower() == nombre.Trim().ToLower(), cancellationToken))?.Id;
+
+    public async Task<Guid?> FindEstadoIdPorNombreAsync(string nombre, CancellationToken cancellationToken = default) =>
+        (await context.EstadosProyecto.AsNoTracking().FirstOrDefaultAsync(x => x.Nombre.ToLower() == nombre.Trim().ToLower(), cancellationToken))?.Id;
+
+    public async Task<(Guid CiudadId, Guid RegionId, Guid PaisId)?> FindCiudadPorNombreAsync(string nombrePais, string nombreCiudad, CancellationToken cancellationToken = default)
+    {
+        var ciudad = await context.Ciudades.AsNoTracking()
+            .Where(c => c.Nombre.ToLower() == nombreCiudad.Trim().ToLower() && c.Region.Pais.Nombre.ToLower() == nombrePais.Trim().ToLower())
+            .Select(c => new { c.Id, c.RegionId, c.Region.PaisId })
+            .FirstOrDefaultAsync(cancellationToken);
+        return ciudad is null ? null : (ciudad.Id, ciudad.RegionId, ciudad.PaisId);
+    }
     public Task AddAsync<T>(T entity, CancellationToken cancellationToken = default) where T : class => context.Set<T>().AddAsync(entity, cancellationToken).AsTask();
     public void Update<T>(T entity) where T : class => context.Set<T>().Update(entity);
     public Task DeleteAsync<T>(T entity, CancellationToken cancellationToken = default) where T : class { context.Set<T>().Remove(entity); return Task.CompletedTask; }

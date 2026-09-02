@@ -9,6 +9,9 @@ public class UsuarioRepository(NexitDbContext context) : Repository<Usuario>(con
 {
     public Task<bool> ExistsByEmailAsync(string email, Guid? excludedId = null, CancellationToken cancellationToken = default) =>
         DbSet.AnyAsync(x => x.Email.ToLower() == email.ToLower() && (!excludedId.HasValue || x.Id != excludedId), cancellationToken);
+
+    public Task<Usuario?> GetByEmailAsync(string email, CancellationToken cancellationToken = default) =>
+        DbSet.AsNoTracking().FirstOrDefaultAsync(x => x.Email.ToLower() == email.ToLower(), cancellationToken);
     public override async Task<IReadOnlyList<Usuario>> GetAllAsync(CancellationToken cancellationToken = default) =>
         await DbSet.AsNoTracking().OrderBy(x => x.Nombre).ToListAsync(cancellationToken);
 

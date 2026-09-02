@@ -19,6 +19,19 @@ public interface ICatalogosRepository
     Task<IReadOnlyList<EstadoProyecto>> GetEstadosAsync(short? fase, CancellationToken cancellationToken = default);
     Task<EstadoProyecto?> GetEstadoAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> NombreExisteAsync<T>(string nombre, Guid? excludeId = null, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>Busca un país por nombre (sin distinguir mayúsculas/acentos exactos) -- para la importación masiva desde Excel (docs/31), donde el archivo trae el nombre, no el Id.</summary>
+    Task<Guid?> FindPaisIdPorNombreAsync(string nombre, CancellationToken cancellationToken = default);
+    /// <summary>Busca una categoría de proveedor por nombre -- mismo uso que <see cref="FindPaisIdPorNombreAsync"/>.</summary>
+    Task<Guid?> FindCategoriaIdPorNombreAsync(string nombre, CancellationToken cancellationToken = default);
+    /// <summary>Busca un estado de proyecto por nombre -- mismo uso que <see cref="FindPaisIdPorNombreAsync"/>.</summary>
+    Task<Guid?> FindEstadoIdPorNombreAsync(string nombre, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Busca una ciudad por nombre, calificada por el país al que debe pertenecer (una ciudad no es
+    /// única globalmente por nombre -- hay más de una "La Paz" en la región). Devuelve también la
+    /// región de la ciudad encontrada, ya que <c>CreateProveedorDto</c> guarda los tres niveles.
+    /// </summary>
+    Task<(Guid CiudadId, Guid RegionId, Guid PaisId)?> FindCiudadPorNombreAsync(string nombrePais, string nombreCiudad, CancellationToken cancellationToken = default);
     Task AddAsync<T>(T entity, CancellationToken cancellationToken = default) where T : class;
     void Update<T>(T entity) where T : class;
     Task DeleteAsync<T>(T entity, CancellationToken cancellationToken = default) where T : class;

@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # NuGet (backend) -- revisa semanalmente si hay actualizaciones, en
+  # especial de seguridad, para los paquetes referenciados en los .csproj.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  # GitHub Actions -- mismo cuidado para el propio workflow de CI
+  # (.github/workflows/ci.yml).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

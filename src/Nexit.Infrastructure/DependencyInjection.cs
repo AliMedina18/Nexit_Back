@@ -34,6 +34,9 @@ public static class DependencyInjection
         services.AddScoped<IProveedorColaboradorRepository, ProveedorColaboradorRepository>();
         services.AddScoped<IInvitacionEquipoRepository, InvitacionEquipoRepository>();
         services.AddSingleton<IInformeExcelExporter, InformeExcelExporter>();
+        services.AddScoped<IClientesImportExporter, ClientesImportExporter>();
+        services.AddScoped<IProveedoresImportExporter, ProveedoresImportExporter>();
+        services.AddScoped<IProyectosImportExporter, ProyectosImportExporter>();
         services.AddScoped<ISupabaseAuthAdminService, SupabaseAuthAdminService>();
         services.AddScoped<ISupabaseStorageService, SupabaseStorageService>();
         services.AddHostedService<EliminacionAutomaticaUsuariosInactivosService>();

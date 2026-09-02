@@ -11,6 +11,8 @@ public class ClienteRepository(NexitDbContext context) : Repository<Cliente>(con
         DbSet.AnyAsync(x => x.Email != null && x.Email.ToLower() == email.ToLower() && (!excludedId.HasValue || x.Id != excludedId), cancellationToken);
     public Task<Cliente?> GetByEmailAsync(string email, CancellationToken cancellationToken = default) =>
         DbSet.Include(x => x.Telefonos).FirstOrDefaultAsync(x => x.Email != null && x.Email.ToLower() == email.ToLower(), cancellationToken);
+    public async Task<Guid?> FindIdPorNombreAsync(string nombre, CancellationToken cancellationToken = default) =>
+        (await DbSet.AsNoTracking().FirstOrDefaultAsync(x => x.Nombre.ToLower() == nombre.Trim().ToLower(), cancellationToken))?.Id;
     public override Task<Cliente?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
         DbSet.Include(x => x.Telefonos).FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     // Include(x => x.Proyectos) agregado para el endpoint de prioridad (docs/24) -- necesita el

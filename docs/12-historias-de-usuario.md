@@ -53,7 +53,7 @@ Este es el diseño vigente desde el 2026-08-21 (ver la actualización en `docs/1
 
 **Actualizado 2026-08-23:** el factor externo ya se resolvió — el proyecto real de Supabase existe, el SMTP de Gmail está conectado, y la plantilla "Enlace mágico o OTP" ya muestra `{{ .Token }}` con el diseño de `docs/14-plantilla-correo-otp.md`. Se disparó un `signInWithOtp` real contra `analistacompras@agencianextmkt.com` y el correo llegó de verdad, con el código, por el canal real (no el servicio de pruebas de Supabase). No hay ninguna línea de código nueva que escribir en `Nexit_Back` para esta historia — el intercambio de credenciales completo (pedir el código, verificarlo, crear la contraseña) es Supabase Auth, no este backend.
 
-La única pieza que sí vive en `Nexit_Back` y que esta historia da por hecha (por eso no está en 🔴) es anterior a ella: que la cuenta ya tenga su perfil de negocio registrado con `POST /api/usuarios` (rol, nombre, activo). Esa parte **ya está construida y probada** — es el módulo de usuarios completo (`UsuariosController`, `SuperAdminOnly`, validación de dominio de correo aplicada dos veces — ver `docs/06` y `docs/08`, 120/120 pruebas). No hay nada de permisos de usuarios pendiente de programar.
+La única pieza que sí vive en `Nexit_Back` y que esta historia da por hecha (por eso no está en 🔴) es anterior a ella: que la cuenta ya tenga su perfil de negocio registrado con `POST /api/usuarios` (rol, nombre, activo, exclusivo de `super_admin`). Esa parte **ya está construida y probada** — es el módulo de usuarios completo (`UsuariosController`, crear/editar/eliminar `SuperAdminOnly`, ver abierto por rol desde 2026-08-26, validación de dominio de correo aplicada dos veces — ver `docs/06` y `docs/08`, 120/120 pruebas). No hay nada de permisos de usuarios pendiente de programar.
 
 ---
 
@@ -90,7 +90,7 @@ Esta historia se deja deliberadamente **superficial** por ahora — cubre qué s
 2. El frontend arma el menú principal según ese rol:
    - **Cualquier rol** ve: Clientes, Proveedores, Proyectos, Calendario.
    - **Solo admin y super_admin** ven además: Informes, Catálogos (administración de países/regiones/ciudades/categorías/servicios/fases/estados), y la bandeja de solicitudes de eliminación pendientes de decidir.
-   - **Solo super_admin** ve además: Usuarios (alta/edición/baja de cuentas).
+   - **admin y super_admin** ven además: Usuarios (directorio completo) — pero dentro de esa sección, alta/edición/baja de cuentas sigue siendo exclusiva de super_admin (ver `docs/11`, sección 8, actualizado 2026-08-26).
    - **manager** ve además una bandeja de "solicitudes de eliminación pendientes para mí" (los proyectos de los que es gerente responsable) — ver `docs/11`, sección 9.
 3. El detalle de qué botón exacto se habilita o no dentro de cada una de esas pantallas (por ejemplo, el botón "Eliminar" directo vs. "Solicitar eliminación") se deja para la historia de usuario de cada módulo específico, no para esta.
 
@@ -102,6 +102,8 @@ Esta historia se deja deliberadamente **superficial** por ahora — cubre qué s
 ### Estado del backend para esta historia: ✅ Backend listo
 
 Esta historia sí depende directamente de código de `Nexit_Back`, y ya está completo: el claim de rol (`user_role`/`app_role`) lo agrega el Auth Hook de Postgres (`docs/schema/03_auth_hook_custom_claims.sql`, ejecutable en cuanto exista el Supabase real — la lógica en sí ya está escrita), y las dos políticas de autorización que hacen cumplir esos límites en cada endpoint (`SuperAdminOnly`, `AdminOrAbove`) ya están implementadas y probadas (120/120 pruebas, incluidas las de autorización por rol en `docs/06` y `docs/08`). El frontend no tiene que inventar ninguna regla de permisos nueva para armar este menú — solo leer el rol del JWT y aplicar exactamente la matriz de `docs/11`, sección 1.
+
+**Actualizado 2026-08-26:** además del rol (que ya venía en el JWT), ahora cualquier persona autenticada puede pedir su propio nombre/apellido/iniciales reales con `GET /api/usuarios/me` (antes `UsuariosController` era `SuperAdminOnly` completo, así que nadie fuera de super_admin podía saber su propio nombre tal como está guardado en el sistema) — ver `docs/11`, sección 8. Esto no cambia el menú de esta historia, pero sí lo que el frontend puede mostrar en el encabezado/avatar de cualquier usuario.
 
 ---
 
@@ -181,7 +183,7 @@ Igual que HU-04: cero código nuevo en `Nexit_Back` — esto es 100% Supabase Au
 Ver `docs/17-eliminacion-automatica-usuarios.md` para el diseño completo y la investigación de cómo lo resuelven otros productos (Microsoft Entra ID, GitLab, Facebook — todos con una ventana de 30 días, el mismo número que pediste).
 
 ### Precondiciones
-- Quien ejecuta esto es `super_admin` (`UsuariosController` es exclusivo de ese rol — ver `docs/06`).
+- Quien ejecuta esto es `super_admin` (desactivar/reactivar/eliminar en `UsuariosController` es exclusivo de ese rol — ver `docs/06`, sección 6).
 
 ### Flujo principal
 1. El super administrador edita a alguien (`PUT /api/usuarios/{id}`) y pone `Activo = false`. El backend guarda la fecha exacta de ese cambio (`FechaDesactivacion`) — arranca ahí el conteo de 30 días.
@@ -387,9 +389,9 @@ Origen: pedido por WhatsApp el 24/8/2026, al hablar de los administradores norma
 
 Ver `docs/29-presencia-en-vivo-implementacion.md` para la investigación completa (cómo lo resuelven otros sistemas), la decisión de usar un heartbeat propio en vez de Supabase Realtime Presence (y por qué), y la respuesta a las tres preguntas de diseño que había dejado abiertas `docs/26`. Esquema: columna nueva `ultima_actividad` en `usuarios` — migración de EF Core `AddPresenciaUsuarios`.
 
-### Estado del backend para esta historia: 🟡 Backend listo en código, pendiente de compilar/probar
+### Estado del backend para esta historia: ✅ Hecho
 
-Código completo: entidad (`Usuario.UltimaActividad`), casos de uso (`RegistrarPresenciaUseCase`, `ConsultarPresenciaUseCase`), controlador (`PresenciaController`, `POST /ping` y `GET` con la política `AdminOrAbove`), y 6 pruebas nuevas (`PresenciaTests.cs`). Falta el mismo paso que en `docs/28`: generar y aplicar la migración (`dotnet ef migrations add AddPresenciaUsuarios`), compilar y correr las pruebas en tu máquina, y aplicarla a `nexit_dev` (`dotnet ef database update`) — no pude hacerlo yo misma por la misma limitación de siempre (sin SDK de .NET en el entorno donde edito tus archivos). En cuanto confirmes que compiló y las pruebas pasan, esta historia pasa a ✅.
+Código completo y probado de verdad: entidad (`Usuario.UltimaActividad`), casos de uso (`RegistrarPresenciaUseCase`, `ConsultarPresenciaUseCase`), controlador (`PresenciaController`, `POST /ping` y `GET` con la política `AdminOrAbove`), y 9 pruebas nuevas (`PresenciaTests.cs`). La migración `AddPresenciaUsuarios` se generó, se compiló sin errores y ya está aplicada a `nexit_dev` — la columna `ultima_actividad` existe en `usuarios`. 251 pruebas en total (244 pasan, 7 dependen de Docker en este entorno — nada nuevo), cero regresiones. Para producción falta correr `docs/schema/11_presencia_usuarios.sql` en el SQL Editor de Supabase (ver `docs/README.md`).
 
 ---
 

@@ -4,6 +4,10 @@
 -- las dos es obligatoria (un adjunto tipo "link" nunca las tiene).
 --
 -- Se ejecuta, una vez, sin orden fijo -- no depende de ningún otro script de esta carpeta.
+--
+-- Actualización 2026-09-02: se le agregó IF NOT EXISTS a las dos columnas (mismo patrón que
+-- ya usan schema/06 y schema/07) -- así, si por error se corre dos veces contra el mismo
+-- proyecto, la segunda vez no falla con "column already exists", solo no hace nada.
 
-ALTER TABLE proveedor_adjuntos ADD COLUMN content_type character varying(255);
-ALTER TABLE proveedor_adjuntos ADD COLUMN tamano_bytes bigint;
+ALTER TABLE proveedor_adjuntos ADD COLUMN IF NOT EXISTS content_type character varying(255);
+ALTER TABLE proveedor_adjuntos ADD COLUMN IF NOT EXISTS tamano_bytes bigint;

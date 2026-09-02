@@ -26,6 +26,19 @@ public class Usuario : BaseEntity
     /// </summary>
     public DateTime? UltimaActividad { get; set; }
 
+    /// <summary>
+    /// True desde que esta persona termina de crear su contraseña por primera vez (o de
+    /// restablecerla) en Nexit_Front (ver AuthController/docs/30). Se usa SOLO para que la pantalla
+    /// de login sepa, antes de que escriba nada más que su correo, si debe pedirle directamente su
+    /// contraseña ("Bienvenido de nuevo") o mandarla por el camino de código + crear contraseña (si
+    /// es la primera vez). No es un espejo de si Supabase Auth tiene o no una contraseña guardada
+    /// -- eso no es consultable desde este backend -- es una marca que pone el propio frontend de
+    /// Nexit cuando completa ese paso. False por defecto: toda cuenta nueva (recién invitada) entra
+    /// así, y el flujo de código sigue funcionando igual de bien si por algún motivo la marca no se
+    /// puso (ver el fallback manual que se dejó en el login).
+    /// </summary>
+    public bool ContrasenaConfigurada { get; set; } = false;
+
     public ICollection<Cliente> ClientesCreados { get; set; } = new List<Cliente>();
     public ICollection<Proveedor> ProveedoresCreados { get; set; } = new List<Proveedor>();
     public ICollection<Proyecto> ProyectosCreados { get; set; } = new List<Proyecto>();

@@ -35,21 +35,36 @@ public class ControllersRequierenAutorizacionTests
         Assert.True(tieneAuthorize, $"{controlador.Name} no tiene [Authorize] (ni propio ni heredado) -- quedaría abierto a cualquiera sin autenticar.");
     }
 
+    /// <summary>
+    /// Única excepción deliberada a "nada es público" (ver docs/30): el login necesita saber, ANTES
+    /// de que la persona escriba su contraseña, si su cuenta ya tiene una configurada -- y eso, por
+    /// definición, no puede exigir sesión. La respuesta en sí no revela si el correo existe (ver
+    /// ConsultarEstadoCuentaUseCase), y el endpoint tiene su propio límite de tasa mucho más estricto
+    /// que el resto de la API ("auth-anon" en Program.cs) precisamente por ser el único público.
+    /// Cualquier otro [AllowAnonymous] que aparezca en el ensamblado, en cualquier controlador o
+    /// acción que no sea exactamente esta, sigue siendo motivo de alarma.
+    /// </summary>
+    private static readonly (Type Controlador, string Metodo) UnicaAccionPublicaPermitida =
+        (typeof(AuthController), nameof(AuthController.EstadoCuenta));
+
     [Theory]
     [MemberData(nameof(Controladores))]
     public void Ningun_controlador_ni_accion_tiene_AllowAnonymous(Type controlador)
     {
-        // En este sistema NO hay ningún endpoint pensado para ser público (ni siquiera un healthcheck
-        // vive aquí) -- así que [AllowAnonymous] en cualquier controlador o acción es, por diseño,
-        // siempre una señal de alarma. Si alguna vez se necesita un endpoint público de verdad, hay que
-        // actualizar esta prueba a propósito (no que se cuele sin darse cuenta).
+        // En este sistema casi ningún endpoint está pensado para ser público -- así que
+        // [AllowAnonymous] en cualquier controlador o acción es, por diseño, siempre una señal de
+        // alarma, salvo la única excepción documentada arriba (UnicaAccionPublicaPermitida). Si
+        // alguna vez se necesita OTRO endpoint público de verdad, hay que actualizar esta prueba a
+        // propósito (no que se cuele sin darse cuenta).
         var enLaClase = controlador.GetCustomAttributes(typeof(AllowAnonymousAttribute), inherit: true).Length > 0;
         Assert.False(enLaClase, $"{controlador.Name} tiene [AllowAnonymous] a nivel de clase -- ¿es intencional?");
 
         foreach (var accion in controlador.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
         {
             var enElMetodo = accion.GetCustomAttributes(typeof(AllowAnonymousAttribute), inherit: true).Length > 0;
-            Assert.False(enElMetodo, $"{controlador.Name}.{accion.Name} tiene [AllowAnonymous] -- ¿es intencional?");
+            if (!enElMetodo) continue;
+            var esLaExcepcionPermitida = controlador == UnicaAccionPublicaPermitida.Controlador && accion.Name == UnicaAccionPublicaPermitida.Metodo;
+            Assert.True(esLaExcepcionPermitida, $"{controlador.Name}.{accion.Name} tiene [AllowAnonymous] -- ¿es intencional? (la única excepción permitida hoy es {UnicaAccionPublicaPermitida.Controlador.Name}.{UnicaAccionPublicaPermitida.Metodo})");
         }
     }
 

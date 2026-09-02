@@ -11,11 +11,13 @@ Con esa duda resuelta, se confirmó la regla de negocio: **por ahora, solo se ac
 ## Qué se construyó
 
 ### Bucket de Storage
-Se creó el bucket `adjuntos-proveedores` en el proyecto real de Supabase, directamente por la API de Storage (no requiere ningún script SQL nuevo — a diferencia del esquema de Postgres, la configuración de un bucket vive en la configuración del proyecto, no en una tabla):
+Se creó el bucket `adjuntos-proveedores` en el proyecto real de Supabase, directamente por la API de Storage:
 
 - **Privado** (no público — cada archivo solo se puede descargar con una URL firmada temporal, nunca con un link permanente).
 - **Límite de 20 MB por archivo.**
 - **Whitelist de tipos MIME** a nivel del propio bucket, como segunda capa de protección además de la validación en el backend: `application/pdf`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (`.xlsx`), `application/vnd.ms-excel` (`.xls`).
+
+**Actualización (2026-09-02):** esa configuración vivía solo en el dashboard, sin quedar en ningún script — si algún día hubiera que recrear el bucket (otro ambiente, disaster recovery) nadie tendría cómo reproducir exactamente estos tres ajustes sin adivinar. Aunque el bucket no es parte del `DbContext` de EF Core, sí es una fila real de una tabla de Postgres (`storage.buckets`) y por lo tanto sí se puede scriptear: `schema/13_bucket_adjuntos_proveedores.sql` deja esta configuración como un `INSERT ... ON CONFLICT` idempotente (probado localmente contra un Postgres real antes de entregarlo) — seguro de correr tanto para crear el bucket desde cero en un proyecto nuevo como para simplemente re-confirmar la configuración del que ya existe en producción, sin tocar ningún archivo ya subido.
 
 ### Cambios en el backend
 
@@ -50,3 +52,12 @@ La estimación fue: hasta 24 personas, unos 60 proyectos al mes, un ejemplo de 1
 - No hay control de versiones de archivos (subir un archivo nuevo no "reemplaza" uno viejo — quedan como adjuntos separados, igual que ya pasaba con los links).
 - No hay previsualización de archivos dentro de Nexit — la descarga entrega la URL firmada, y el navegador/sistema operativo de quien la abre decide cómo mostrarla.
 - No se agregaron más tipos de archivo que PDF/Excel — si más adelante se necesita otro tipo (Word, imágenes), es un cambio pequeño (agregar la extensión a la whitelist del backend y al bucket), no un rediseño.
+
+## Pendientes (2026-09-02)
+
+Todo lo de código (backend, frontend, pruebas de ambos lados, CI) ya está completo y probado. Quedan dos pasos, y los dos solo los puede hacer la usuaria porque requieren credenciales reales de producción que este entorno no tiene:
+
+1. **Correr `schema/10_adjuntos_content_type_tamano.sql` contra el Supabase real de producción.** Ya está aplicada a `nexit_dev` (local); en producción, la tabla `proveedor_adjuntos` todavía no tiene las columnas `content_type`/`tamano_bytes` — hasta que se corra, `SubirAsync` fallaría en producción al intentar guardar la fila.
+2. **Correr `schema/13_bucket_adjuntos_proveedores.sql` contra ese mismo proyecto.** El bucket ya existe y ya funciona (se configuró a mano en su momento), así que este paso no es urgente para que la subida de archivos funcione — es para que la configuración quede scriptada/reproducible de una vez, por si hay que recrearla algún día. Se puede correr sin riesgo aunque el bucket ya exista (es un UPSERT, no cambia ningún archivo ya subido).
+
+Ambos se corren igual: pegar el contenido del archivo en el SQL Editor del dashboard de Supabase del proyecto real y ejecutar — sin orden fijo entre ellos ni con ningún otro script pendiente.

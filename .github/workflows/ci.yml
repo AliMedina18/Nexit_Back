@@ -1,0 +1,58 @@
+name: CI
+
+# Corre en cada push/PR a main: restaura, compila en Release, audita paquetes
+# NuGet vulnerables y corre toda la suite de pruebas (unitarias, de
+# integración y funcionales -- estas últimas levantan un Postgres real con
+# Testcontainers, ver tests/Nexit.Tests/Functional/NexitFunctionalApiFactory.cs
+# -- funciona sin configurar nada porque los runners de GitHub Actions traen
+# Docker corriendo por defecto). Mismos comandos (dotnet build/test -c
+# Release) que se venían verificando a mano en cada entrega.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      # No hay packages.lock.json en el repo -- se usa el hash de los .csproj
+      # como llave de caché (razonable sin lock file exacto: cambia cuando
+      # cambian las versiones de paquetes referenciadas).
+      - name: Cachear paquetes NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restaurar dependencias
+        run: dotnet restore Nexit.sln
+
+      - name: Compilar (Release)
+        run: dotnet build Nexit.sln -c Release --no-restore
+
+      - name: Auditoría de paquetes NuGet vulnerables
+        run: |
+          set -o pipefail
+          dotnet list Nexit.sln package --vulnerable --include-transitive 2>&1 | tee nuget-audit.txt
+          if grep -q "has the following vulnerable packages" nuget-audit.txt; then
+            echo "::error::Se encontraron paquetes NuGet con vulnerabilidades conocidas -- ver el log de este paso."
+            exit 1
+          fi
+
+      - name: Pruebas (unitarias + integración + funcionales con Docker/Testcontainers)
+        run: dotnet test Nexit.sln -c Release --no-build --logger "console;verbosity=normal"

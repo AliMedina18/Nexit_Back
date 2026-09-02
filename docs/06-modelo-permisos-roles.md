@@ -9,7 +9,7 @@
 
 El backend arrancó con un modelo de 3 roles (`admin`/`manager`/`miembro`), implementado en la sesión de auditoría/remediación de seguridad del 2026-08-17 (ver documentos 02 y 05). Al revisarlo con la usuaria, describió un modelo más específico de **4 niveles**, con dos ideas nuevas que el modelo de 3 roles no cubría:
 
-1. Un nivel por encima de `admin` — **super_admin** — exclusivo de quien desarrolla/administra el sistema, y el único que puede ver o tocar la gestión de cuentas de usuario.
+1. Un nivel por encima de `admin` — **super_admin** — exclusivo de quien desarrolla/administra el sistema, y el único que puede *gestionar* (crear/editar/eliminar) cuentas de usuario. **Actualizado 2026-08-26:** *ver* esas cuentas es más amplio -- `admin` ve el directorio completo, y cualquier autenticado puede ver el perfil individual de cualquier compañero (solo lectura, como el directorio de Microsoft Teams) -- ver sección 6.
 2. El concepto de que un **gerente es "dueño" de un proyecto** cuando lo lidera, con un **flujo de solicitud de eliminación** de dos pasos (gerente dueño → administrador) para proyectos, clientes y proveedores.
 
 Este documento describe el modelo resultante, las decisiones de diseño tomadas para llenar los huecos que la descripción original no cubría explícitamente, y dónde vive cada pieza en el código.
@@ -20,10 +20,10 @@ La fuente de este modelo es la descripción directa de la usuaria (dueña del pr
 
 | Rol | Quién es | Qué puede hacer |
 |---|---|---|
-| `super_admin` | La desarrolladora/administradora del sistema. Un único rol, pensado para muy pocas personas (idealmente una). | Todo. Es el único rol que puede ver y gestionar la tabla de usuarios (crear, ver, editar rol/estado, eliminar). También hereda todo lo que puede hacer `admin`. |
-| `admin` | Administración operativa del negocio, sin acceso a la gestión de cuentas. | Todo excepto usuarios: catálogos, clientes, proveedores, proyectos, informes. Decide (aprueba/rechaza) las solicitudes de eliminación de clientes/proveedores/proyectos. |
-| `manager` (gerente) | Un miembro del equipo con un rol adicional: puede ser el "dueño" de uno o más proyectos. | Todo lo de clientes/proveedores/proyectos (crear, ver, editar) igual que un miembro, más: es dueño de los proyectos donde quedó asignado como `gerente_id`, y decide (endosa/rechaza) las solicitudes de eliminación de esos proyectos antes de que lleguen a un administrador. |
-| `miembro` | El equipo de marketing / usuarios normales de la aplicación. | Ver y trabajar con clientes, proveedores y proyectos (crear, editar). No puede eliminar directamente ninguno de los tres — debe pasar por una solicitud de eliminación. |
+| `super_admin` | La desarrolladora/administradora del sistema. Un único rol, pensado para muy pocas personas (idealmente una). | Todo. Es el único rol que puede *gestionar* la tabla de usuarios (crear, editar rol/estado, eliminar) -- *ver* el directorio ya no es exclusivo suyo, ver sección 6. También hereda todo lo que puede hacer `admin`. |
+| `admin` | Administración operativa del negocio, sin poder *gestionar* (crear/editar/eliminar) cuentas de usuario -- desde 2026-08-26 sí puede *verlas*. | Todo lo de catálogos, clientes, proveedores, proyectos, informes, más ver (no gestionar) el directorio completo de usuarios (`GET /api/usuarios`, sección 6). Decide (aprueba/rechaza) las solicitudes de eliminación de clientes/proveedores/proyectos. |
+| `manager` (gerente) | Un miembro del equipo con un rol adicional: puede ser el "dueño" de uno o más proyectos. | Todo lo de clientes/proveedores/proyectos (crear, ver, editar) igual que un miembro, más: es dueño de los proyectos donde quedó asignado como `gerente_id`, y decide (endosa/rechaza) las solicitudes de eliminación de esos proyectos antes de que lleguen a un administrador. Puede ver el perfil individual de cualquier compañero, solo lectura (sección 6). |
+| `miembro` | El equipo de marketing / usuarios normales de la aplicación. | Ver y trabajar con clientes, proveedores y proyectos (crear, editar). No puede eliminar directamente ninguno de los tres — debe pasar por una solicitud de eliminación. Puede ver el perfil individual de cualquier compañero, solo lectura (sección 6). |
 
 Nota textual de la usuaria que resume la relación manager/miembro: *"el gerente es un miembro, solo que con un rol más arriba, porque es el dueño del proyecto"* — por eso `manager` no es un rol aparte con permisos distintos de `miembro` sobre clientes/proveedores/proyectos (ambos pueden crear/ver/editar los tres por igual); lo único que distingue a un `manager` es que puede quedar como `gerente_id` de un proyecto y, cuando lo es, participa en el flujo de aprobación de su eliminación.
 
@@ -33,8 +33,8 @@ Nota textual de la usuaria que resume la relación manager/miembro: *"el gerente
 
 Dos políticas estáticas de ASP.NET Core (`src/Nexit.API/Program.cs`), evaluadas contra el claim `app_role`/`user_role` del JWT (agregado por el Auth Hook de Supabase, `docs/schema/03_auth_hook_custom_claims.sql`):
 
-- **`SuperAdminOnly`** — únicamente `super_admin`. Protege todo `UsuariosController` a nivel de clase.
-- **`AdminOrAbove`** — `admin` o `super_admin`. Protege la administración directa de catálogos, y la eliminación directa (sin pasar por una solicitud) de catálogos y adjuntos, además de las decisiones finales (`aprobar`/`rechazar`) sobre solicitudes de eliminación.
+- **`SuperAdminOnly`** — únicamente `super_admin`. Protege crear/editar/eliminar en `UsuariosController` (`POST`/`PUT`/`DELETE`) -- desde 2026-08-26 ya no protege el controlador completo, ver sección 6.
+- **`AdminOrAbove`** — `admin` o `super_admin`. Protege la administración directa de catálogos, la eliminación directa (sin pasar por una solicitud) de catálogos y adjuntos, las decisiones finales (`aprobar`/`rechazar`) sobre solicitudes de eliminación, y (desde 2026-08-26) listar el directorio completo de usuarios (`GET /api/usuarios`).
 
 Todo lo demás (crear/ver/editar clientes, proveedores, proyectos; crear una solicitud de eliminación; endosar/rechazar una solicitud como gerente) solo exige estar autenticado — no hay una política estática más restrictiva porque la restricción real depende de datos en tiempo de ejecución (¿soy el gerente dueño de *este* proyecto en particular?), algo que una política estática de ASP.NET Core no puede expresar. Esas verificaciones viven como reglas de negocio dentro de los casos de uso, y lanzan `ForbiddenOperationException` (nueva, mapea a HTTP 403) cuando no se cumplen — a diferencia de `BusinessRuleException` (409, conflictos de datos/negocio) y `EntityNotFoundException` (404).
 
@@ -101,9 +101,13 @@ Las políticas de ASP.NET Core (`SuperAdminOnly`, `AdminOrAbove`) solo pueden mi
 - **`AprobarComoAdminUseCase` es case-insensitive respecto a si la entidad ya fue borrada por otra vía** (por ejemplo, un admin la eliminó directo mientras la solicitud seguía pendiente): revisa que exista antes de intentar el `DELETE`, así una aprobación tardía no lanza un error por "entidad no encontrada".
 - **La tabla `solicitudes_eliminacion` es un histórico de decisiones, no una papelera de reciclaje.** No hay una operación de "deshacer" ni de restaurar — al aprobar, el `DELETE` es real y definitivo (hard delete), igual que la eliminación directa que ya usaban `admin`/`super_admin`.
 
-## 6. Gestión de usuarios (exclusiva de `super_admin`)
+## 6. Gestión de usuarios
 
-`UsuariosController` (protegido con `[Authorize(Policy = "SuperAdminOnly")]` a nivel de clase) expone CRUD completo sobre `usuarios`:
+`UsuariosController` expone CRUD completo sobre `usuarios`, pero ya no con una sola política de clase -- desde 2026-08-26 hay tres niveles de acceso dentro del mismo controlador:
+
+- **Ver el directorio completo** (`GET /api/usuarios`): `AdminOrAbove` -- `admin` y `super_admin`.
+- **Ver un perfil individual, el propio o el de otra persona** (`GET /api/usuarios/me`, `GET /api/usuarios/{id}`): cualquier autenticado, sin importar el rol -- solo lectura, como mirar el perfil de un compañero en el directorio de Microsoft Teams. No expone forma de editar ni eliminar.
+- **Crear/editar/eliminar** (`POST`/`PUT`/`DELETE`): `SuperAdminOnly`, sin cambios.
 
 - **Crear** (`POST /api/usuarios`): recibe el `Id` (el UUID que Supabase Auth ya le asignó a la cuenta) además de nombre/apellido/email/rol — este backend nunca crea contraseñas ni envía invitaciones; ese flujo vive en Supabase Auth (Authentication → Users → Invite). La súper administradora primero invita a la persona desde el dashboard de Supabase, y luego registra aquí su perfil de negocio con ese mismo UUID.
 - **Editar** (`PUT /api/usuarios/{id}`): nombre, apellido, rol, iniciales, activo.
