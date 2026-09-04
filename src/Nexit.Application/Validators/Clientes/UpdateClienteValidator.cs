@@ -10,6 +10,7 @@ public class UpdateClienteValidator : AbstractValidator<UpdateClienteDto>
     {
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Nombre).NotEmpty().MaximumLength(255);
+        RuleFor(x => x.Estado).Must(e => e is "Activo" or "Prospecto" or "Inactivo").WithMessage("Estado inválido");
         RuleFor(x => x.Email).EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.Email));
         RuleFor(x => x.Email).MustAsync(async (dto, email, token) => !await repository.ExistsByEmailAsync(email!, dto.Id, token))
             .WithMessage("El email ya está registrado").When(x => !string.IsNullOrWhiteSpace(x.Email));

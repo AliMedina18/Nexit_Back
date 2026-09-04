@@ -80,12 +80,20 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
         modelBuilder.Entity<EstadoProyecto>(entity => { entity.ToTable("estados_proyecto"); entity.HasKey(x => x.Id); entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()"); entity.HasIndex(x => x.Nombre).IsUnique(); entity.HasIndex(x => x.Orden).IsUnique(); entity.Property(x => x.Nombre).HasMaxLength(255).IsRequired(); });
         modelBuilder.Entity<Cliente>(entity =>
         {
-            entity.ToTable("clientes");
+            entity.ToTable("clientes", t =>
+            {
+                t.HasCheckConstraint("ck_clientes_estado", "estado IN ('Activo', 'Prospecto', 'Inactivo')");
+            });
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
             entity.HasIndex(x => x.Email).IsUnique().HasFilter("email IS NOT NULL");
             entity.HasIndex(x => x.Nombre); entity.HasIndex(x => x.Ciudad);
             entity.Property(x => x.Nombre).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Estado).HasDefaultValue("Activo");
+            entity.HasIndex(x => x.Estado);
+            entity.HasOne<Pais>().WithMany().HasForeignKey(x => x.PaisId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Region>().WithMany().HasForeignKey(x => x.RegionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Ciudad>().WithMany().HasForeignKey(x => x.CiudadId).OnDelete(DeleteBehavior.Restrict);
             entity.HasMany(x => x.Telefonos).WithOne(x => x.Cliente).HasForeignKey(x => x.ClienteId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.Proyectos).WithOne(x => x.Cliente).HasForeignKey(x => x.ClienteId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne<Usuario>().WithMany(x => x.ClientesCreados).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.SetNull);

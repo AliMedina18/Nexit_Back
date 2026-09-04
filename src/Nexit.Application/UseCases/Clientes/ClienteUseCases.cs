@@ -72,18 +72,21 @@ internal static class ClienteMapper
 {
     public static Cliente ToEntity(CreateClienteDto input) => new()
     {
-        Nombre = input.Nombre, Sector = input.Sector, Ciudad = input.Ciudad, Direccion = input.Direccion, Web = input.Web,
+        Nombre = input.Nombre, Sector = input.Sector, PaisId = input.PaisId, RegionId = input.RegionId, CiudadId = input.CiudadId,
+        Estado = input.Estado, Ciudad = input.Ciudad, Direccion = input.Direccion, Web = input.Web,
         Contacto = input.Contacto, CargoContacto = input.CargoContacto, Email = input.Email, ValorReferencia = input.ValorReferencia, Notas = input.Notas
     };
     public static void Apply(CreateClienteDto input, Cliente cliente)
     {
-        cliente.Nombre = input.Nombre; cliente.Sector = input.Sector; cliente.Ciudad = input.Ciudad; cliente.Direccion = input.Direccion;
+        cliente.Nombre = input.Nombre; cliente.Sector = input.Sector; cliente.PaisId = input.PaisId; cliente.RegionId = input.RegionId;
+        cliente.CiudadId = input.CiudadId; cliente.Estado = input.Estado; cliente.Ciudad = input.Ciudad; cliente.Direccion = input.Direccion;
         cliente.Web = input.Web; cliente.Contacto = input.Contacto; cliente.CargoContacto = input.CargoContacto; cliente.Email = input.Email;
         cliente.ValorReferencia = input.ValorReferencia; cliente.Notas = input.Notas;
     }
     public static ClienteResponseDto ToResponse(Cliente cliente) => new()
     {
-        Id = cliente.Id, Nombre = cliente.Nombre, Sector = cliente.Sector, Ciudad = cliente.Ciudad, Direccion = cliente.Direccion,
+        Id = cliente.Id, Nombre = cliente.Nombre, Sector = cliente.Sector, PaisId = cliente.PaisId, RegionId = cliente.RegionId,
+        CiudadId = cliente.CiudadId, Estado = cliente.Estado, Ciudad = cliente.Ciudad, Direccion = cliente.Direccion,
         Web = cliente.Web, Contacto = cliente.Contacto, CargoContacto = cliente.CargoContacto, Email = cliente.Email,
         ValorReferencia = cliente.ValorReferencia, Notas = cliente.Notas, CreatedAt = cliente.CreatedAt, UpdatedAt = cliente.UpdatedAt,
         Telefonos = cliente.Telefonos.Select(phone => new ClienteTelefonoDto { Id = phone.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta }).ToList()

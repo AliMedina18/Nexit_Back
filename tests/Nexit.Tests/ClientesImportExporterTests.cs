@@ -17,6 +17,8 @@ namespace Nexit.Tests;
 /// </summary>
 public class ClientesImportExporterTests
 {
+    private static readonly Guid PaisId = Guid.NewGuid();
+
     private static Mock<IClienteRepository> RepositorioSinDuplicados()
     {
         var repo = new Mock<IClienteRepository>();
@@ -24,11 +26,19 @@ public class ClientesImportExporterTests
         return repo;
     }
 
+    private static Mock<ICatalogosRepository> CatalogosConColombia()
+    {
+        var catalogos = new Mock<ICatalogosRepository>();
+        catalogos.Setup(x => x.FindPaisIdPorNombreAsync("Colombia", It.IsAny<CancellationToken>())).ReturnsAsync(PaisId);
+        catalogos.Setup(x => x.FindPaisIdPorNombreAsync(It.Is<string>(n => n != "Colombia"), It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
+        return catalogos;
+    }
+
     private static Stream LibroConFila(params string?[] valores)
     {
         using var workbook = new XLWorkbook();
         var hoja = workbook.Worksheets.Add("Clientes");
-        string[] columnas = ["Nombre", "Sector", "Ciudad", "Dirección", "Web", "Contacto", "Cargo del contacto", "Email", "Valor de referencia", "Teléfono", "Notas"];
+        string[] columnas = ["Nombre", "Sector", "Ciudad", "Dirección", "Web", "Contacto", "Cargo del contacto", "Email", "Valor de referencia", "Teléfono", "Notas", "País", "Estado"];
         for (var i = 0; i < columnas.Length; i++) hoja.Cell(1, i + 1).Value = columnas[i];
         for (var i = 0; i < valores.Length; i++) if (valores[i] is not null) hoja.Cell(2, i + 1).Value = valores[i];
         var stream = new MemoryStream();
@@ -44,7 +54,7 @@ public class ClientesImportExporterTests
         crear.Setup(x => x.ExecuteAsync(It.IsAny<CreateClienteDto>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((CreateClienteDto dto, Guid _, CancellationToken _) => new ClienteResponseDto { Nombre = dto.Nombre });
         var validator = new CreateClienteValidator(RepositorioSinDuplicados().Object);
-        var importer = new ClientesImportExporter(crear.Object, validator);
+        var importer = new ClientesImportExporter(crear.Object, validator, Mock.Of<ICatalogosRepository>());
 
         using var archivo = LibroConFila("Acme S.A.", "Retail", "Bogotá", null, null, null, null, null, null, "3000000000", null);
         var resultado = await importer.ImportarAsync(archivo, Guid.NewGuid());
@@ -55,11 +65,44 @@ public class ClientesImportExporterTests
     }
 
     [Fact]
+    public async Task Importar_resuelve_el_pais_por_nombre_y_usa_el_estado_de_la_columna()
+    {
+        var crear = new Mock<Nexit.Application.UseCases.Clientes.ICrearClienteUseCase>();
+        crear.Setup(x => x.ExecuteAsync(It.IsAny<CreateClienteDto>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CreateClienteDto dto, Guid _, CancellationToken _) => new ClienteResponseDto { Nombre = dto.Nombre });
+        var validator = new CreateClienteValidator(RepositorioSinDuplicados().Object);
+        var importer = new ClientesImportExporter(crear.Object, validator, CatalogosConColombia().Object);
+
+        using var archivo = LibroConFila("Acme S.A.", "Retail", "Bogotá", null, null, null, null, null, null, "3000000000", null, "Colombia", "Prospecto");
+        var resultado = await importer.ImportarAsync(archivo, Guid.NewGuid());
+
+        Assert.Equal(1, resultado.Creados);
+        Assert.Empty(resultado.Errores);
+        crear.Verify(x => x.ExecuteAsync(It.Is<CreateClienteDto>(d => d.PaisId == PaisId && d.Estado == "Prospecto"), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Importar_reporta_error_si_el_pais_no_existe_en_catalogos()
+    {
+        var crear = new Mock<Nexit.Application.UseCases.Clientes.ICrearClienteUseCase>();
+        var validator = new CreateClienteValidator(RepositorioSinDuplicados().Object);
+        var importer = new ClientesImportExporter(crear.Object, validator, CatalogosConColombia().Object);
+
+        using var archivo = LibroConFila("Acme S.A.", null, null, null, null, null, null, null, null, "3000000000", null, "Narnia", null);
+        var resultado = await importer.ImportarAsync(archivo, Guid.NewGuid());
+
+        Assert.Equal(0, resultado.Creados);
+        Assert.Single(resultado.Errores);
+        Assert.Contains("Narnia", resultado.Errores[0].Mensaje);
+        crear.Verify(x => x.ExecuteAsync(It.IsAny<CreateClienteDto>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Importar_reporta_fila_invalida_sin_detener_el_archivo_ni_crear_nada()
     {
         var crear = new Mock<Nexit.Application.UseCases.Clientes.ICrearClienteUseCase>();
         var validator = new CreateClienteValidator(RepositorioSinDuplicados().Object);
-        var importer = new ClientesImportExporter(crear.Object, validator);
+        var importer = new ClientesImportExporter(crear.Object, validator, Mock.Of<ICatalogosRepository>());
 
         // Sin Nombre y sin Teléfono -- ambos requeridos por CreateClienteValidator.
         using var archivo = LibroConFila(null, "Retail", null, null, null, null, null, null, null, null, null);
@@ -78,7 +121,7 @@ public class ClientesImportExporterTests
         crear.Setup(x => x.ExecuteAsync(It.IsAny<CreateClienteDto>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new BusinessRuleException("El email ya está registrado"));
         var validator = new CreateClienteValidator(RepositorioSinDuplicados().Object);
-        var importer = new ClientesImportExporter(crear.Object, validator);
+        var importer = new ClientesImportExporter(crear.Object, validator, Mock.Of<ICatalogosRepository>());
 
         using var archivo = LibroConFila("Acme S.A.", null, null, null, null, null, null, "dup@acme.com", null, "3000000000", null);
         var resultado = await importer.ImportarAsync(archivo, Guid.NewGuid());
@@ -93,7 +136,7 @@ public class ClientesImportExporterTests
     {
         var crear = new Mock<Nexit.Application.UseCases.Clientes.ICrearClienteUseCase>();
         var validator = new CreateClienteValidator(RepositorioSinDuplicados().Object);
-        var importer = new ClientesImportExporter(crear.Object, validator);
+        var importer = new ClientesImportExporter(crear.Object, validator, Mock.Of<ICatalogosRepository>());
 
         using var workbook = new XLWorkbook();
         var hoja = workbook.Worksheets.Add("Clientes");
@@ -117,7 +160,7 @@ public class ClientesImportExporterTests
     [Fact]
     public void Exportar_escribe_el_encabezado_y_una_fila_por_cliente()
     {
-        var importer = new ClientesImportExporter(Mock.Of<Nexit.Application.UseCases.Clientes.ICrearClienteUseCase>(), Mock.Of<FluentValidation.IValidator<CreateClienteDto>>());
+        var importer = new ClientesImportExporter(Mock.Of<Nexit.Application.UseCases.Clientes.ICrearClienteUseCase>(), Mock.Of<FluentValidation.IValidator<CreateClienteDto>>(), Mock.Of<ICatalogosRepository>());
         var clientes = new List<ClienteResponseDto>
         {
             new() { Nombre = "Acme S.A.", Email = "hola@acme.com", Telefonos = [new ClienteTelefonoDto { Telefono = "3000000000" }] },

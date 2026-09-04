@@ -26,4 +26,5 @@ coverage*.info
 _to_delete/
 _audit_tmp/
 _scratch/
+docs/datos/
 *.tmp
