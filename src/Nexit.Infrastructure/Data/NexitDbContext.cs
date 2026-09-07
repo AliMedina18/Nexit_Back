@@ -12,10 +12,13 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
     public DbSet<CategoriaProveedor> CategoriasProveedor => Set<CategoriaProveedor>();
     public DbSet<FaseProyecto> FasesProyecto => Set<FaseProyecto>();
     public DbSet<EstadoProyecto> EstadosProyecto => Set<EstadoProyecto>();
+    public DbSet<EtapaCliente> EtapasCliente => Set<EtapaCliente>();
     public DbSet<Cliente> Clientes => Set<Cliente>();
     public DbSet<ClienteTelefono> ClienteTelefonos => Set<ClienteTelefono>();
+    public DbSet<ClienteEmail> ClienteEmails => Set<ClienteEmail>();
     public DbSet<Proveedor> Proveedores => Set<Proveedor>();
     public DbSet<ProveedorTelefono> ProveedorTelefonos => Set<ProveedorTelefono>();
+    public DbSet<ProveedorEmail> ProveedorEmails => Set<ProveedorEmail>();
     public DbSet<ProveedorAdjunto> ProveedorAdjuntos => Set<ProveedorAdjunto>();
     public DbSet<DominioCorreoPermitido> DominiosCorreoPermitidos => Set<DominioCorreoPermitido>();
     public DbSet<Servicio> Servicios => Set<Servicio>();
@@ -78,6 +81,13 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.HasMany(x => x.Estados).WithOne(x => x.FaseProyecto).HasForeignKey(x => x.Fase).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<EstadoProyecto>(entity => { entity.ToTable("estados_proyecto"); entity.HasKey(x => x.Id); entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()"); entity.HasIndex(x => x.Nombre).IsUnique(); entity.HasIndex(x => x.Orden).IsUnique(); entity.Property(x => x.Nombre).HasMaxLength(255).IsRequired(); });
+        modelBuilder.Entity<EtapaCliente>(entity =>
+        {
+            entity.ToTable("etapas_cliente", t => t.HasCheckConstraint("ck_etapas_cliente_porcentaje", "porcentaje_proceso BETWEEN 0 AND 100"));
+            entity.HasKey(x => x.Id); entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.HasIndex(x => x.Nombre).IsUnique(); entity.HasIndex(x => x.Orden).IsUnique();
+            entity.Property(x => x.Nombre).HasMaxLength(255).IsRequired(); entity.Property(x => x.PorcentajeProceso).HasDefaultValue((short)0);
+        });
         modelBuilder.Entity<Cliente>(entity =>
         {
             entity.ToTable("clientes", t =>
@@ -86,15 +96,17 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             });
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
-            entity.HasIndex(x => x.Email).IsUnique().HasFilter("email IS NOT NULL");
             entity.HasIndex(x => x.Nombre); entity.HasIndex(x => x.Ciudad);
             entity.Property(x => x.Nombre).HasMaxLength(255).IsRequired();
             entity.Property(x => x.Estado).HasDefaultValue("Activo");
             entity.HasIndex(x => x.Estado);
+            entity.HasIndex(x => x.EtapaId);
             entity.HasOne<Pais>().WithMany().HasForeignKey(x => x.PaisId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Region>().WithMany().HasForeignKey(x => x.RegionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Ciudad>().WithMany().HasForeignKey(x => x.CiudadId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<EtapaCliente>().WithMany().HasForeignKey(x => x.EtapaId).OnDelete(DeleteBehavior.Restrict);
             entity.HasMany(x => x.Telefonos).WithOne(x => x.Cliente).HasForeignKey(x => x.ClienteId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(x => x.Emails).WithOne(x => x.Cliente).HasForeignKey(x => x.ClienteId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.Proyectos).WithOne(x => x.Cliente).HasForeignKey(x => x.ClienteId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne<Usuario>().WithMany(x => x.ClientesCreados).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.SetNull);
             entity.Property<uint>("xmin").HasColumnName("xmin").ValueGeneratedOnAddOrUpdate().IsRowVersion();
@@ -106,6 +118,20 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
             entity.Ignore(x => x.CreatedAt); entity.Ignore(x => x.UpdatedAt); entity.Ignore(x => x.CreatedBy); entity.Ignore(x => x.UpdatedBy);
             entity.Property(x => x.Telefono).HasMaxLength(50).IsRequired();
+        });
+        modelBuilder.Entity<ClienteEmail>(entity =>
+        {
+            // Lista simple de correos (2026-09-06, ver Cliente.Emails) -- reemplaza la columna
+            // `clientes.email` de antes. La unicidad SÍ sigue siendo una restricción real de base de
+            // datos (a diferencia de Proveedor, ver ProveedorEmail más abajo), igual que lo era el
+            // índice único de la columna vieja -- solo que ahora es "ningún correo repetido en toda la
+            // tabla", no "ningún cliente con el mismo correo".
+            entity.ToTable("cliente_emails");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Ignore(x => x.CreatedAt); entity.Ignore(x => x.UpdatedAt); entity.Ignore(x => x.CreatedBy); entity.Ignore(x => x.UpdatedBy);
+            entity.Property(x => x.Email).HasMaxLength(255).IsRequired();
+            entity.HasIndex(x => x.Email).IsUnique();
         });
         modelBuilder.Entity<Proveedor>(entity =>
         {
@@ -126,6 +152,7 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.HasOne<Ciudad>().WithMany().HasForeignKey(x => x.CiudadId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<CategoriaProveedor>().WithMany().HasForeignKey(x => x.CategoriaId).OnDelete(DeleteBehavior.Restrict);
             entity.HasMany(x => x.Telefonos).WithOne(x => x.Proveedor).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(x => x.Emails).WithOne(x => x.Proveedor).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.Servicios).WithOne(x => x.Proveedor).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.Adjuntos).WithOne(x => x.Proveedor).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.Proyectos).WithOne(x => x.Proveedor).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
@@ -133,6 +160,11 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.Property<uint>("xmin").HasColumnName("xmin").ValueGeneratedOnAddOrUpdate().IsRowVersion();
         });
         modelBuilder.Entity<ProveedorTelefono>(entity => { entity.ToTable("proveedor_telefonos"); entity.HasKey(x => x.Id); entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()"); entity.Ignore(x => x.CreatedAt); entity.Ignore(x => x.UpdatedAt); entity.Ignore(x => x.CreatedBy); entity.Ignore(x => x.UpdatedBy); entity.Property(x => x.Telefono).HasMaxLength(50).IsRequired(); });
+        // Lista simple de correos (2026-09-06, ver Proveedor.Emails) -- reemplaza la columna
+        // `proveedores.email` de antes. A diferencia de ClienteEmail, NO hay índice único acá: la
+        // columna vieja `proveedores.email` tampoco lo tenía (inconsistencia ya existente, no se
+        // corrige de paso para no ampliar el alcance de este cambio).
+        modelBuilder.Entity<ProveedorEmail>(entity => { entity.ToTable("proveedor_emails"); entity.HasKey(x => x.Id); entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()"); entity.Ignore(x => x.CreatedAt); entity.Ignore(x => x.UpdatedAt); entity.Ignore(x => x.CreatedBy); entity.Ignore(x => x.UpdatedBy); entity.Property(x => x.Email).HasMaxLength(255).IsRequired(); });
         modelBuilder.Entity<ProveedorAdjunto>(entity => { entity.ToTable("proveedor_adjuntos", t => t.HasCheckConstraint("ck_proveedor_adjuntos_tipo", "tipo IN ('link', 'file')")); entity.HasKey(x => x.Id); entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()"); entity.Property(x => x.Tipo).HasMaxLength(10).IsRequired(); entity.Property(x => x.Nombre).HasMaxLength(255).IsRequired(); entity.Property(x => x.ContentType).HasMaxLength(255); entity.Property(x => x.Fecha).HasDefaultValueSql("CURRENT_DATE"); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()"); });
         modelBuilder.Entity<DominioCorreoPermitido>(entity => { entity.ToTable("dominios_correo_permitidos"); entity.HasKey(x => x.Id); entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()"); entity.HasIndex(x => x.Dominio).IsUnique(); entity.Property(x => x.Dominio).HasMaxLength(255).IsRequired(); });
         modelBuilder.Entity<Servicio>(entity => { entity.ToTable("servicios"); entity.HasKey(x => x.Id); entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()"); entity.HasIndex(x => x.Nombre).IsUnique(); entity.Ignore(x => x.UpdatedBy); });

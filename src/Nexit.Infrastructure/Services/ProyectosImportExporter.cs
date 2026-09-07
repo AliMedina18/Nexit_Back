@@ -10,15 +10,27 @@ using Nexit.Core.Interfaces;
 namespace Nexit.Infrastructure.Services;
 
 /// <summary>
-/// Implementación con ClosedXML de <see cref="IProyectosImportExporter"/> (docs/31) -- ver el
-/// comentario de <see cref="IClientesImportExporter"/> para el diseño general. A propósito, la
-/// importación de proyectos NO incluye equipo, proveedores asociados ni gerente explícito -- son
-/// relaciones, no datos planos de una fila, y forzarlas a columnas de Excel (nombres separados por
-/// comas, con el riesgo de no encontrar a la persona exacta) complicaría el archivo sin necesidad;
-/// esas tres cosas se completan después, proyecto por proyecto, desde la pantalla de edición --
-/// exactamente igual que si el proyecto se hubiera creado a mano sin llenarlas todavía.
+/// Implementación con ClosedXML de <see cref="IProyectosImportExporter"/> (docs/31, docs/35) -- ver
+/// el comentario de <see cref="IClientesImportExporter"/> para el diseño general, y el de esa misma
+/// clase para el criterio de reimportar. A propósito, la importación de proyectos NO incluye equipo,
+/// proveedores asociados ni gerente explícito -- son relaciones, no datos planos de una fila, y
+/// forzarlas a columnas de Excel (nombres separados por comas, con el riesgo de no encontrar a la
+/// persona exacta) complicaría el archivo sin necesidad; esas tres cosas se completan después,
+/// proyecto por proyecto, desde la pantalla de edición -- exactamente igual que si el proyecto se
+/// hubiera creado a mano sin llenarlas todavía. Por eso, al ACTUALIZAR un proyecto ya existente, esas
+/// tres cosas se conservan tal cual estaban -- reimportar el archivo nunca las vacía.
+/// Reimportar: la llave para saber "esto ya lo tenemos" es la pareja (Cliente, Nombre), no el nombre
+/// solo -- ver <see cref="IProyectoRepository.FindIdPorClienteYNombreAsync"/> -- porque el mismo
+/// nombre de proyecto puede repetirse legítimamente para clientes distintos.
 /// </summary>
-public class ProyectosImportExporter(ICrearProyectoUseCase crear, IValidator<CrearProyectoDto> validator, IClienteRepository clientes, ICatalogosRepository catalogos) : IProyectosImportExporter
+public class ProyectosImportExporter(
+    ICrearProyectoUseCase crear,
+    IActualizarProyectoUseCase actualizar,
+    IValidator<CrearProyectoDto> validator,
+    IValidator<ActualizarProyectoDto> updateValidator,
+    IClienteRepository clientes,
+    IProyectoRepository proyectoRepository,
+    ICatalogosRepository catalogos) : IProyectosImportExporter
 {
     private static readonly string[] Columnas =
     [
@@ -110,43 +122,123 @@ public class ProyectosImportExporter(ICrearProyectoUseCase crear, IValidator<Cre
                 continue;
             }
 
-            var pagado = EsSiONo(celdas.Cell(15));
-            var dto = new CrearProyectoDto
-            {
-                Nombre = Texto(celdas.Cell(1)),
-                ClienteId = clienteId,
-                ContactoProyecto = TextoOpcional(celdas.Cell(3)),
-                TipoProyecto = TextoOpcional(celdas.Cell(4)),
-                Prioridad = TextoOpcional(celdas.Cell(5)),
-                Ciudad = TextoOpcional(celdas.Cell(6)),
-                SedeNext = TextoOpcional(celdas.Cell(7)),
-                FechaSolicitud = FechaOpcional(celdas.Cell(8)),
-                FechaEvento = FechaOpcional(celdas.Cell(9)),
-                EstadoId = estadoId.Value,
-                PorcentajeAvance = NumeroEnteroOpcional(celdas.Cell(11)) ?? 0,
-                EstadoBrief = TextoOpcional(celdas.Cell(12)) ?? "Pendiente por enviar",
-                PropuestaEstado = TextoOpcional(celdas.Cell(13)) ?? "No enviada",
-                NumeroFactura = TextoOpcional(celdas.Cell(14)),
-                Pagado = pagado,
-                FechaPago = pagado ? (FechaOpcional(celdas.Cell(16)) ?? DateTime.UtcNow) : null,
-                Notas = TextoOpcional(celdas.Cell(17)),
-            };
+            var nombre = Texto(celdas.Cell(1));
+            var contactoProyecto = TextoOpcional(celdas.Cell(3));
+            var tipoProyecto = TextoOpcional(celdas.Cell(4));
+            var prioridad = TextoOpcional(celdas.Cell(5));
+            var ciudad = TextoOpcional(celdas.Cell(6));
+            var sedeNext = TextoOpcional(celdas.Cell(7));
+            var fechaSolicitud = FechaOpcional(celdas.Cell(8));
+            var fechaEvento = FechaOpcional(celdas.Cell(9));
+            var porcentajeAvance = NumeroEnteroOpcional(celdas.Cell(11));
+            var estadoBrief = TextoOpcional(celdas.Cell(12));
+            var propuestaEstado = TextoOpcional(celdas.Cell(13));
+            var numeroFactura = TextoOpcional(celdas.Cell(14));
+            var pagadoExcel = EsSiONoOpcional(celdas.Cell(15));
+            var notas = TextoOpcional(celdas.Cell(17));
 
-            var validacion = await validator.ValidateAsync(dto, cancellationToken);
-            if (!validacion.IsValid)
-            {
-                resultado.Errores.Add(new ImportarErrorDto { Fila = fila, Mensaje = string.Join("; ", validacion.Errors.Select(e => e.ErrorMessage)) });
-                continue;
-            }
+            // docs/35: reimportar no duplica -- la llave es (Cliente, Nombre), no el nombre solo, porque
+            // el mismo nombre de proyecto puede repetirse legítimamente para clientes distintos.
+            var existenteId = await proyectoRepository.FindIdPorClienteYNombreAsync(clienteId, nombre, cancellationToken);
 
-            try
+            if (existenteId is null)
             {
-                await crear.ExecuteAsync(dto, usuarioId, usuarioRol, cancellationToken);
-                resultado.Creados++;
+                var pagado = pagadoExcel ?? false;
+                var dto = new CrearProyectoDto
+                {
+                    Nombre = nombre,
+                    ClienteId = clienteId,
+                    ContactoProyecto = contactoProyecto,
+                    TipoProyecto = tipoProyecto,
+                    Prioridad = prioridad,
+                    Ciudad = ciudad,
+                    SedeNext = sedeNext,
+                    FechaSolicitud = fechaSolicitud,
+                    FechaEvento = fechaEvento,
+                    EstadoId = estadoId.Value,
+                    PorcentajeAvance = porcentajeAvance ?? 0,
+                    EstadoBrief = estadoBrief ?? "Pendiente por enviar",
+                    PropuestaEstado = propuestaEstado ?? "No enviada",
+                    NumeroFactura = numeroFactura,
+                    Pagado = pagado,
+                    FechaPago = pagado ? (FechaOpcional(celdas.Cell(16)) ?? DateTime.UtcNow) : null,
+                    Notas = notas,
+                };
+
+                var validacion = await validator.ValidateAsync(dto, cancellationToken);
+                if (!validacion.IsValid)
+                {
+                    resultado.Errores.Add(new ImportarErrorDto { Fila = fila, Mensaje = string.Join("; ", validacion.Errors.Select(e => e.ErrorMessage)) });
+                    continue;
+                }
+
+                try
+                {
+                    await crear.ExecuteAsync(dto, usuarioId, usuarioRol, cancellationToken);
+                    resultado.Creados++;
+                }
+                catch (BusinessRuleException ex)
+                {
+                    resultado.Errores.Add(new ImportarErrorDto { Fila = fila, Mensaje = ex.Message });
+                }
             }
-            catch (BusinessRuleException ex)
+            else
             {
-                resultado.Errores.Add(new ImportarErrorDto { Fila = fila, Mensaje = ex.Message });
+                // Ver el comentario equivalente en ClientesImportExporter sobre por qué este GetByIdAsync
+                // no hace una segunda consulta real (mapa de identidad de EF Core dentro del mismo scope).
+                var existente = await proyectoRepository.GetByIdAsync(existenteId.Value, cancellationToken);
+                if (existente is null)
+                {
+                    resultado.Errores.Add(new ImportarErrorDto { Fila = fila, Mensaje = "El proyecto encontrado ya no existe (se borró justo ahora) -- vuelve a intentar la importación." });
+                    continue;
+                }
+
+                var pagado = pagadoExcel ?? existente.Pagado;
+                var dto = new ActualizarProyectoDto
+                {
+                    Id = existenteId.Value,
+                    Nombre = nombre,
+                    ClienteId = clienteId,
+                    // Campo en blanco en el Excel = se conserva el valor que el proyecto ya tenía; campo
+                    // con un valor = lo reemplaza si es distinto (docs/35).
+                    ContactoProyecto = contactoProyecto ?? existente.ContactoProyecto,
+                    TipoProyecto = tipoProyecto ?? existente.TipoProyecto,
+                    Prioridad = prioridad ?? existente.Prioridad,
+                    Ciudad = ciudad ?? existente.Ciudad,
+                    SedeNext = sedeNext ?? existente.SedeNext,
+                    FechaSolicitud = fechaSolicitud ?? existente.FechaSolicitud,
+                    FechaEvento = fechaEvento ?? existente.FechaEvento,
+                    EstadoId = estadoId.Value,
+                    PorcentajeAvance = porcentajeAvance ?? existente.PorcentajeAvance,
+                    EstadoBrief = estadoBrief ?? existente.EstadoBrief,
+                    PropuestaEstado = propuestaEstado ?? existente.PropuestaEstado,
+                    NumeroFactura = numeroFactura ?? existente.NumeroFactura,
+                    Pagado = pagado,
+                    FechaPago = pagado ? (FechaOpcional(celdas.Cell(16)) ?? existente.FechaPago ?? DateTime.UtcNow) : null,
+                    Notas = notas ?? existente.Notas,
+                    // Gerente, equipo y proveedores asociados no vienen en este Excel (ver el comentario
+                    // de la clase) -- se conservan tal cual, nunca se vacían por reimportar.
+                    GerenteId = existente.GerenteId,
+                    Equipo = existente.Equipo.Select(e => new ProyectoEquipoDto { Id = e.Id, Rol = e.Rol, Nombre = e.Nombre }).ToList(),
+                    ProveedorIds = existente.Proveedores.Select(pp => pp.ProveedorId).ToList(),
+                };
+
+                var validacion = await updateValidator.ValidateAsync(dto, cancellationToken);
+                if (!validacion.IsValid)
+                {
+                    resultado.Errores.Add(new ImportarErrorDto { Fila = fila, Mensaje = string.Join("; ", validacion.Errors.Select(e => e.ErrorMessage)) });
+                    continue;
+                }
+
+                try
+                {
+                    await actualizar.ExecuteAsync(dto, usuarioId, usuarioRol, cancellationToken);
+                    resultado.Actualizados++;
+                }
+                catch (BusinessRuleException ex)
+                {
+                    resultado.Errores.Add(new ImportarErrorDto { Fila = fila, Mensaje = ex.Message });
+                }
             }
         }
         return resultado;
@@ -155,10 +247,24 @@ public class ProyectosImportExporter(ICrearProyectoUseCase crear, IValidator<Cre
     private static string Texto(IXLCell celda) => celda.GetString().Trim();
     private static string? TextoOpcional(IXLCell celda) { var texto = Texto(celda); return string.IsNullOrWhiteSpace(texto) ? null : texto; }
     private static int? NumeroEnteroOpcional(IXLCell celda) => celda.TryGetValue(out int numero) ? numero : null;
-    private static DateTime? FechaOpcional(IXLCell celda) => celda.TryGetValue(out DateTime fecha) ? fecha : null;
-    private static bool EsSiONo(IXLCell celda)
+    // ClosedXML devuelve las fechas de Excel con Kind=Unspecified (Excel no guarda zona
+    // horaria) -- Npgsql rechaza escribir eso en una columna "timestamp with time zone"
+    // ("Cannot write DateTime with Kind=Unspecified... only UTC is supported"). Se marca
+    // como Utc explícitamente, igual que ya hace Nexit.Core.Utils.SedeTimeZoneResolver
+    // para este mismo problema -- no se le suma ni resta nada a la hora, solo se etiqueta.
+    private static DateTime? FechaOpcional(IXLCell celda) =>
+        celda.TryGetValue(out DateTime fecha) ? DateTime.SpecifyKind(fecha, DateTimeKind.Utc) : null;
+    /// <summary>
+    /// A diferencia de la versión anterior (que devolvía false para una celda en blanco), esta versión
+    /// devuelve null cuando la celda está vacía -- así, al actualizar un proyecto ya existente, dejar
+    /// esta columna en blanco en el Excel NO revierte "Pagado" a No por accidente; conserva lo que el
+    /// proyecto ya tenía (ver el criterio general de reimportar, docs/35). Un texto que no es
+    /// afirmativo ("no", cualquier otra cosa) sigue contando como No explícito, no como "en blanco".
+    /// </summary>
+    private static bool? EsSiONoOpcional(IXLCell celda)
     {
         var texto = Texto(celda).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(texto)) return null;
         return texto is "si" or "sí" or "yes" or "true" or "1";
     }
 }

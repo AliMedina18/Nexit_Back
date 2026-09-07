@@ -18,6 +18,8 @@ public interface ICatalogosRepository
     Task<FaseProyecto?> GetFaseAsync(short fase, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EstadoProyecto>> GetEstadosAsync(short? fase, CancellationToken cancellationToken = default);
     Task<EstadoProyecto?> GetEstadoAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EtapaCliente>> GetEtapasClienteAsync(CancellationToken cancellationToken = default);
+    Task<EtapaCliente?> GetEtapaClienteAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> NombreExisteAsync<T>(string nombre, Guid? excludeId = null, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>Busca un país por nombre (sin distinguir mayúsculas/acentos exactos) -- para la importación masiva desde Excel (docs/31), donde el archivo trae el nombre, no el Id.</summary>

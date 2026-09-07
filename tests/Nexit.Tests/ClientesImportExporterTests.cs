@@ -163,7 +163,7 @@ public class ClientesImportExporterTests
         var importer = new ClientesImportExporter(Mock.Of<Nexit.Application.UseCases.Clientes.ICrearClienteUseCase>(), Mock.Of<FluentValidation.IValidator<CreateClienteDto>>(), Mock.Of<ICatalogosRepository>());
         var clientes = new List<ClienteResponseDto>
         {
-            new() { Nombre = "Acme S.A.", Email = "hola@acme.com", Telefonos = [new ClienteTelefonoDto { Telefono = "3000000000" }] },
+            new() { Nombre = "Acme S.A.", Emails = [new ClienteEmailDto { Email = "hola@acme.com" }], Telefonos = [new ClienteTelefonoDto { Telefono = "3000000000" }] },
         };
 
         var bytes = importer.Exportar(clientes);

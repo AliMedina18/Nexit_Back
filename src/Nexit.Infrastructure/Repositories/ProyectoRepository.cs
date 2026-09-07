@@ -16,6 +16,14 @@ public class ProyectoRepository(NexitDbContext context) : Repository<Proyecto>(c
         await DbSet.AsNoTracking().Include(x => x.Equipo).Include(x => x.Proveedores).Include(x => x.Seguimiento)
             .OrderByDescending(x => x.FechaEvento).ThenBy(x => x.Nombre).ToListAsync(cancellationToken);
 
+    // Mismo patrón que ClienteRepository.FindIdPorNombreAsync/ProveedorRepository.FindIdPorNombreAsync
+    // (docs/35), pero con la pareja (ClienteId, Nombre) como llave -- ver el comentario en la interfaz.
+    // La comparación `x.ClienteId == clienteId` con ambos nullable es segura tal cual (EF Core la
+    // traduce a SQL que trata NULL = NULL como verdadero para este propósito, no hace falta un caso
+    // especial para "sin cliente").
+    public async Task<Guid?> FindIdPorClienteYNombreAsync(Guid? clienteId, string nombre, CancellationToken cancellationToken = default) =>
+        (await DbSet.AsNoTracking().FirstOrDefaultAsync(x => x.ClienteId == clienteId && x.Nombre.ToLower() == nombre.Trim().ToLower(), cancellationToken))?.Id;
+
     // Vista de calendario (ver docs/07 y docs/18-calendario-zona-horaria-por-sede.md): a propósito
     // estas 3 consultas NO usan Include ni traen la entidad Proyecto completa -- son
     // proyecciones/agregaciones livianas para que pintar un año completo del calendario no cargue
@@ -58,15 +66,20 @@ public class ProyectoRepository(NexitDbContext context) : Repository<Proyecto>(c
 
     public async Task<IReadOnlyList<ProyectoCalendarioItem>> ObtenerPorMesAsync(int anio, int mes, CancellationToken cancellationToken = default)
     {
+        // FechaEventoLocal se pasa como "" (literal) acá porque EF Core traduce este `select` a un árbol
+        // de expresión para generar SQL, y un árbol de expresión no admite argumentos opcionales/omitidos
+        // (CS0854) -- por eso NO se puede confiar en el default del record. El valor real se calcula abajo,
+        // ya en memoria, con `with` (SedeTimeZoneResolver no es traducible a SQL).
         var candidatos = await (from p in DbSet.AsNoTracking()
                                  join e in Context.EstadosProyecto on p.EstadoId equals e.Id
                                  where p.FechaEvento.HasValue &&
                                        (p.FechaEvento!.Value.Year == anio - 1 || p.FechaEvento!.Value.Year == anio || p.FechaEvento!.Value.Year == anio + 1)
-                                 select new ProyectoCalendarioItem(p.Id, p.Nombre, p.FechaEvento!.Value, p.ClienteId, p.Cliente != null ? p.Cliente.Nombre : null, e.Nombre, p.Prioridad, p.Ciudad, p.SedeNext))
+                                 select new ProyectoCalendarioItem(p.Id, p.Nombre, p.FechaEvento!.Value, p.ClienteId, p.Cliente != null ? p.Cliente.Nombre : null, e.Nombre, p.Prioridad, p.Ciudad, p.SedeNext, ""))
             .ToListAsync(cancellationToken);
 
         return candidatos
             .Where(x => AnioLocal(x.FechaEvento, x.SedeNext) == anio && MesLocal(x.FechaEvento, x.SedeNext) == mes)
+            .Select(x => x with { FechaEventoLocal = SedeTimeZoneResolver.ConvertirUtcALocal(x.FechaEvento, x.SedeNext).ToString("yyyy-MM-dd") })
             .OrderBy(x => x.FechaEvento)
             .ToList();
     }

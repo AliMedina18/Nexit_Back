@@ -24,9 +24,9 @@ public class ClientesTests
     {
         var repository = new Mock<IClienteRepository>();
         repository.Setup(x => x.ExistsByEmailAsync("contacto@nexit.com", null, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var dto = new CreateClienteDto { Nombre = "Nexit", Email = "contacto@nexit.com", Telefonos = [new ClienteTelefonoDto { Telefono = "3000000000" }] };
+        var dto = new CreateClienteDto { Nombre = "Nexit", Emails = [new ClienteEmailDto { Email = "contacto@nexit.com" }], Telefonos = [new ClienteTelefonoDto { Telefono = "3000000000" }] };
         var result = await new CreateClienteValidator(repository.Object).TestValidateAsync(dto);
-        result.ShouldHaveValidationErrorFor(x => x.Email);
+        result.ShouldHaveValidationErrorFor("Emails[0].Email");
     }
 
     [Fact]

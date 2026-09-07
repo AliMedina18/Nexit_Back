@@ -44,10 +44,10 @@ public class ClientesFunctionalTests(NexitFunctionalApiFactory factory) : Functi
     {
         var client = ClientAs("admin");
         var email = $"{Guid.NewGuid():N}@nexit-test.com";
-        var primero = await client.PostAsJsonAsync("/api/clientes", new CreateClienteDto { Nombre = "Cliente A", Email = email, Telefonos = [new ClienteTelefonoDto { Telefono = "3000000000" }] });
+        var primero = await client.PostAsJsonAsync("/api/clientes", new CreateClienteDto { Nombre = "Cliente A", Emails = [new ClienteEmailDto { Email = email }], Telefonos = [new ClienteTelefonoDto { Telefono = "3000000000" }] });
         Assert.Equal(HttpStatusCode.Created, primero.StatusCode);
 
-        var segundo = await client.PostAsJsonAsync("/api/clientes", new CreateClienteDto { Nombre = "Cliente B", Email = email, Telefonos = [new ClienteTelefonoDto { Telefono = "3000000001" }] });
+        var segundo = await client.PostAsJsonAsync("/api/clientes", new CreateClienteDto { Nombre = "Cliente B", Emails = [new ClienteEmailDto { Email = email }], Telefonos = [new ClienteTelefonoDto { Telefono = "3000000001" }] });
         Assert.Equal(HttpStatusCode.BadRequest, segundo.StatusCode);
     }
 }

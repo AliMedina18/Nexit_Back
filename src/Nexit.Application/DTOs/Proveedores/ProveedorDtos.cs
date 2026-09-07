@@ -7,6 +7,13 @@ public class ProveedorTelefonoDto
     public string? Etiqueta { get; set; }
 }
 
+public class ProveedorEmailDto
+{
+    public Guid? Id { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string? Etiqueta { get; set; }
+}
+
 public class CreateProveedorDto
 {
     public string Nombre { get; set; } = string.Empty;
@@ -17,7 +24,6 @@ public class CreateProveedorDto
     public string Estado { get; set; } = "Activo";
     public string? Contacto { get; set; }
     public string? CargoContacto { get; set; }
-    public string? Email { get; set; }
     public string? Web { get; set; }
     public string? Direccion { get; set; }
     public int? Aforo { get; set; }
@@ -27,6 +33,7 @@ public class CreateProveedorDto
     public string? Cobertura { get; set; }
     public string? Notas { get; set; }
     public List<ProveedorTelefonoDto> Telefonos { get; set; } = [];
+    public List<ProveedorEmailDto> Emails { get; set; } = [];
     public List<Guid> ServicioIds { get; set; } = [];
 }
 

@@ -63,6 +63,18 @@ public class CatalogosService(ICatalogosRepository repository, IUnitOfWork unitO
         var entity = await repository.GetEstadoAsync(id, ct) ?? throw NoEncontrada<EstadoProyecto>(id); _ = await repository.GetFaseAsync(input.Fase, ct) ?? throw new BusinessRuleException("La fase indicada no existe."); ValidarNombre(input.Nombre); await AsegurarNombreDisponible<EstadoProyecto>(input.Nombre, id, ct);
         entity.Nombre = input.Nombre.Trim(); entity.Fase = input.Fase; entity.Orden = input.Orden; repository.Update(entity); await unitOfWork.SaveChangesAsync(ct); return new EstadoProyectoDto(entity.Id, entity.Nombre, entity.Fase, entity.Orden);
     }
+    public async Task<IReadOnlyList<EtapaClienteDto>> GetEtapasClienteAsync(CancellationToken ct = default) => (await repository.GetEtapasClienteAsync(ct)).Select(x => new EtapaClienteDto(x.Id, x.Nombre, x.Orden, x.PorcentajeProceso)).ToList();
+    public async Task<EtapaClienteDto> CrearEtapaClienteAsync(CrearEtapaClienteDto input, CancellationToken ct = default)
+    {
+        ValidarNombre(input.Nombre); await AsegurarNombreDisponible<EtapaCliente>(input.Nombre, null, ct); ValidarPorcentaje(input.PorcentajeProceso);
+        var entity = new EtapaCliente { Nombre = input.Nombre.Trim(), Orden = input.Orden, PorcentajeProceso = input.PorcentajeProceso };
+        await repository.AddAsync(entity, ct); await unitOfWork.SaveChangesAsync(ct); return new EtapaClienteDto(entity.Id, entity.Nombre, entity.Orden, entity.PorcentajeProceso);
+    }
+    public async Task<EtapaClienteDto> ActualizarEtapaClienteAsync(Guid id, CrearEtapaClienteDto input, CancellationToken ct = default)
+    {
+        var entity = await repository.GetEtapaClienteAsync(id, ct) ?? throw NoEncontrada<EtapaCliente>(id); ValidarNombre(input.Nombre); await AsegurarNombreDisponible<EtapaCliente>(input.Nombre, id, ct); ValidarPorcentaje(input.PorcentajeProceso);
+        entity.Nombre = input.Nombre.Trim(); entity.Orden = input.Orden; entity.PorcentajeProceso = input.PorcentajeProceso; repository.Update(entity); await unitOfWork.SaveChangesAsync(ct); return new EtapaClienteDto(entity.Id, entity.Nombre, entity.Orden, entity.PorcentajeProceso);
+    }
     public async Task EliminarAsync(string tipo, Guid id, CancellationToken ct = default)
     {
         switch (tipo.ToLowerInvariant())
@@ -70,9 +82,15 @@ public class CatalogosService(ICatalogosRepository repository, IUnitOfWork unitO
             case "paises": await Eliminar(await repository.GetPaisAsync(id, ct), id, ct); break;
             case "regiones": await Eliminar(await repository.GetRegionAsync(id, ct), id, ct); break;
             case "ciudades": await Eliminar(await repository.GetCiudadAsync(id, ct), id, ct); break;
-            case "categorias": await Eliminar(await repository.GetCategoriaAsync(id, ct), id, ct); break;
+            // "categorias-proveedor"/"estados-proyecto" -- deben calzar con el segmento de ruta
+            // que ya usan las demás acciones de este mismo catálogo en CatalogosController
+            // (GET/POST/PUT), no con un nombre corto distinto (antes decía "categorias"/"estados",
+            // que el frontend nunca podía enviar porque CatalogoTipo -- types/api.ts -- ya usa los
+            // nombres largos en todos lados; DELETE quedaba inalcanzable para esos dos tipos).
+            case "categorias-proveedor": await Eliminar(await repository.GetCategoriaAsync(id, ct), id, ct); break;
             case "servicios": await Eliminar(await repository.GetServicioAsync(id, ct), id, ct); break;
-            case "estados": await Eliminar(await repository.GetEstadoAsync(id, ct), id, ct); break;
+            case "estados-proyecto": await Eliminar(await repository.GetEstadoAsync(id, ct), id, ct); break;
+            case "etapas-cliente": await Eliminar(await repository.GetEtapaClienteAsync(id, ct), id, ct); break;
             default: throw new BusinessRuleException("Tipo de catálogo no válido.");
         }
     }
@@ -83,5 +101,6 @@ public class CatalogosService(ICatalogosRepository repository, IUnitOfWork unitO
     private async Task Eliminar<T>(T? entity, Guid id, CancellationToken ct) where T : class { if (entity is null) throw NoEncontrada<T>(id); await repository.DeleteAsync(entity, ct); await unitOfWork.SaveChangesAsync(ct); }
     private async Task AsegurarNombreDisponible<T>(string nombre, Guid? id, CancellationToken ct) where T : class { if (await repository.NombreExisteAsync<T>(nombre.Trim(), id, ct)) throw new BusinessRuleException("Ya existe un registro con ese nombre."); }
     private static void ValidarNombre(string nombre) { if (string.IsNullOrWhiteSpace(nombre) || nombre.Trim().Length > 255) throw new BusinessRuleException("El nombre es requerido y no puede exceder 255 caracteres."); }
+    private static void ValidarPorcentaje(short porcentaje) { if (porcentaje is < 0 or > 100) throw new BusinessRuleException("El porcentaje del proceso debe estar entre 0 y 100."); }
     private static EntityNotFoundException NoEncontrada<T>(Guid id) => new(typeof(T).Name, id);
 }

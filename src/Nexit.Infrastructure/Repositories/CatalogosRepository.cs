@@ -26,6 +26,8 @@ public class CatalogosRepository(NexitDbContext context) : ICatalogosRepository
         return await query.OrderBy(x => x.Orden).ToListAsync(cancellationToken);
     }
     public Task<EstadoProyecto?> GetEstadoAsync(Guid id, CancellationToken cancellationToken = default) => context.EstadosProyecto.FindAsync([id], cancellationToken).AsTask();
+    public async Task<IReadOnlyList<EtapaCliente>> GetEtapasClienteAsync(CancellationToken cancellationToken = default) => await context.EtapasCliente.AsNoTracking().OrderBy(x => x.Orden).ToListAsync(cancellationToken);
+    public Task<EtapaCliente?> GetEtapaClienteAsync(Guid id, CancellationToken cancellationToken = default) => context.EtapasCliente.FindAsync([id], cancellationToken).AsTask();
     public Task<bool> NombreExisteAsync<T>(string nombre, Guid? excludeId = null, CancellationToken cancellationToken = default) where T : class =>
         context.Set<T>().AnyAsync(x => EF.Property<string>(x, "Nombre").ToLower() == nombre.ToLower() && (!excludeId.HasValue || EF.Property<Guid>(x, "Id") != excludeId.Value), cancellationToken);
 

@@ -603,6 +603,19 @@ INSERT INTO estados_proyecto (nombre, fase, orden) VALUES
   ('Ejecutado, pendiente facturar', 3, 8),
   ('Facturado', 3, 9);
 
+-- ---------- ETAPAS DE CLIENTE (docs/33) ----------
+-- Las 6 etapas (E1-E6) del proceso comercial de Next, tal como las documentó la usuaria en la hoja
+-- "Etapas clientes" del Excel de seguimiento de proyectos (con su "% del proceso" original: 10, 30,
+-- 60, 80, 90, 100). A diferencia de estados_proyecto, esta etapa vive en el Cliente, no en el
+-- Proyecto -- cubre E1/E2, que ocurren antes de que exista un brief o un proyecto.
+INSERT INTO etapas_cliente (nombre, orden, porcentaje_proceso) VALUES
+  ('Contacto inicial', 1, 10),
+  ('Reconocimiento', 2, 30),
+  ('Oportunidad de negocio', 3, 60),
+  ('Cierre y pre-producción', 4, 80),
+  ('Finalización', 5, 90),
+  ('Facturación', 6, 100);
+
 -- ---------- DOMINIOS DE CORREO PERMITIDOS (novena revisión; confirmado 2026-08-23) ----------
 -- 'agencianextmkt.com' es el ÚNICO dominio permitido para iniciar sesión en el sistema --
 -- confirmado explícitamente por la usuaria, con ejemplos reales de cuentas bajo ese dominio

@@ -17,6 +17,10 @@ public class CrearClienteUseCase(IClienteRepository repository, IHistorialCambio
         {
             Id = phone.Id ?? Guid.NewGuid(), ClienteId = cliente.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta
         }).ToList();
+        cliente.Emails = input.Emails.Select(mail => new ClienteEmail
+        {
+            Id = mail.Id ?? Guid.NewGuid(), ClienteId = cliente.Id, Email = mail.Email, Etiqueta = mail.Etiqueta
+        }).ToList();
         await repository.AddAsync(cliente, cancellationToken);
         await HistorialRegistrador.RegistrarCreacionAsync(historial, "cliente", cliente.Id, usuarioId, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -46,6 +50,16 @@ public class ActualizarClienteUseCase(IClienteRepository repository, IHistorialC
                 Id = phone.Id ?? Guid.Empty, ClienteId = cliente.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta
             });
         }
+        cliente.Emails.Clear();
+        foreach (var mail in input.Emails)
+        {
+            // Mismo motivo que arriba con Telefonos (Guid.Empty, no Guid.NewGuid(), para los correos nuevos):
+            // ver el comentario detallado sobre el fixup de navegación de EF Core unas líneas arriba.
+            cliente.Emails.Add(new ClienteEmail
+            {
+                Id = mail.Id ?? Guid.Empty, ClienteId = cliente.Id, Email = mail.Email, Etiqueta = mail.Etiqueta
+            });
+        }
         cliente.UpdatedAt = DateTime.UtcNow;
         cliente.UpdatedBy = usuarioId;
         // OJO: NO llamar repository.Update(cliente) aquí -- "cliente" ya está siendo rastreado por el
@@ -73,23 +87,24 @@ internal static class ClienteMapper
     public static Cliente ToEntity(CreateClienteDto input) => new()
     {
         Nombre = input.Nombre, Sector = input.Sector, PaisId = input.PaisId, RegionId = input.RegionId, CiudadId = input.CiudadId,
-        Estado = input.Estado, Ciudad = input.Ciudad, Direccion = input.Direccion, Web = input.Web,
-        Contacto = input.Contacto, CargoContacto = input.CargoContacto, Email = input.Email, ValorReferencia = input.ValorReferencia, Notas = input.Notas
+        Estado = input.Estado, EtapaId = input.EtapaId, Ciudad = input.Ciudad, Direccion = input.Direccion, Web = input.Web,
+        Contacto = input.Contacto, CargoContacto = input.CargoContacto, ValorReferencia = input.ValorReferencia, Notas = input.Notas
     };
     public static void Apply(CreateClienteDto input, Cliente cliente)
     {
         cliente.Nombre = input.Nombre; cliente.Sector = input.Sector; cliente.PaisId = input.PaisId; cliente.RegionId = input.RegionId;
-        cliente.CiudadId = input.CiudadId; cliente.Estado = input.Estado; cliente.Ciudad = input.Ciudad; cliente.Direccion = input.Direccion;
-        cliente.Web = input.Web; cliente.Contacto = input.Contacto; cliente.CargoContacto = input.CargoContacto; cliente.Email = input.Email;
+        cliente.CiudadId = input.CiudadId; cliente.Estado = input.Estado; cliente.EtapaId = input.EtapaId; cliente.Ciudad = input.Ciudad; cliente.Direccion = input.Direccion;
+        cliente.Web = input.Web; cliente.Contacto = input.Contacto; cliente.CargoContacto = input.CargoContacto;
         cliente.ValorReferencia = input.ValorReferencia; cliente.Notas = input.Notas;
     }
     public static ClienteResponseDto ToResponse(Cliente cliente) => new()
     {
         Id = cliente.Id, Nombre = cliente.Nombre, Sector = cliente.Sector, PaisId = cliente.PaisId, RegionId = cliente.RegionId,
-        CiudadId = cliente.CiudadId, Estado = cliente.Estado, Ciudad = cliente.Ciudad, Direccion = cliente.Direccion,
-        Web = cliente.Web, Contacto = cliente.Contacto, CargoContacto = cliente.CargoContacto, Email = cliente.Email,
+        CiudadId = cliente.CiudadId, Estado = cliente.Estado, EtapaId = cliente.EtapaId, Ciudad = cliente.Ciudad, Direccion = cliente.Direccion,
+        Web = cliente.Web, Contacto = cliente.Contacto, CargoContacto = cliente.CargoContacto,
         ValorReferencia = cliente.ValorReferencia, Notas = cliente.Notas, CreatedAt = cliente.CreatedAt, UpdatedAt = cliente.UpdatedAt,
-        Telefonos = cliente.Telefonos.Select(phone => new ClienteTelefonoDto { Id = phone.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta }).ToList()
+        Telefonos = cliente.Telefonos.Select(phone => new ClienteTelefonoDto { Id = phone.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta }).ToList(),
+        Emails = cliente.Emails.Select(mail => new ClienteEmailDto { Id = mail.Id, Email = mail.Email, Etiqueta = mail.Etiqueta }).ToList()
     };
 }
 

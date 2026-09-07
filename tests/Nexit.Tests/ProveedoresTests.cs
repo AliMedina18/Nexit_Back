@@ -44,8 +44,8 @@ public class ProveedoresTests
         var repository = new Mock<IProveedorRepository>();
         var id = Guid.NewGuid();
         repository.Setup(x => x.ExistsByEmailAsync("venue@nexit.com", id, It.IsAny<CancellationToken>())).ReturnsAsync(false);
-        var result = await new UpdateProveedorValidator(repository.Object).TestValidateAsync(new UpdateProveedorDto { Id = id, Nombre = "Venue", PaisId = Guid.NewGuid(), CategoriaId = Guid.NewGuid(), Email = "venue@nexit.com" });
-        result.ShouldNotHaveValidationErrorFor(x => x.Email);
+        var result = await new UpdateProveedorValidator(repository.Object).TestValidateAsync(new UpdateProveedorDto { Id = id, Nombre = "Venue", PaisId = Guid.NewGuid(), CategoriaId = Guid.NewGuid(), Emails = [new ProveedorEmailDto { Email = "venue@nexit.com" }] });
+        result.ShouldNotHaveValidationErrorFor("Emails[0].Email");
     }
 
     [Fact]

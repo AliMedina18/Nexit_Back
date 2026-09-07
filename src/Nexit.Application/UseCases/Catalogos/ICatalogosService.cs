@@ -24,5 +24,8 @@ public interface ICatalogosService
     Task<IReadOnlyList<EstadoProyectoDto>> GetEstadosAsync(short? fase, CancellationToken cancellationToken = default);
     Task<EstadoProyectoDto> CrearEstadoAsync(CrearEstadoProyectoDto input, CancellationToken cancellationToken = default);
     Task<EstadoProyectoDto> ActualizarEstadoAsync(Guid id, CrearEstadoProyectoDto input, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EtapaClienteDto>> GetEtapasClienteAsync(CancellationToken cancellationToken = default);
+    Task<EtapaClienteDto> CrearEtapaClienteAsync(CrearEtapaClienteDto input, CancellationToken cancellationToken = default);
+    Task<EtapaClienteDto> ActualizarEtapaClienteAsync(Guid id, CrearEtapaClienteDto input, CancellationToken cancellationToken = default);
     Task EliminarAsync(string tipo, Guid id, CancellationToken cancellationToken = default);
 }

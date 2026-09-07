@@ -57,17 +57,21 @@ internal static class ProveedorMapper
     public static Proveedor ToEntity(CreateProveedorDto dto) { var entity = new Proveedor(); Apply(dto, entity); return entity; }
     public static void Apply(CreateProveedorDto dto, Proveedor entity)
     {
-        entity.Nombre = dto.Nombre; entity.PaisId = dto.PaisId; entity.RegionId = dto.RegionId; entity.CiudadId = dto.CiudadId; entity.CategoriaId = dto.CategoriaId; entity.Estado = dto.Estado; entity.Contacto = dto.Contacto; entity.CargoContacto = dto.CargoContacto; entity.Email = dto.Email; entity.Web = dto.Web; entity.Direccion = dto.Direccion; entity.Aforo = dto.Aforo; entity.CostoReferencia = dto.CostoReferencia; entity.Score = dto.Score; entity.Presupuesto = dto.Presupuesto; entity.Cobertura = dto.Cobertura; entity.Notas = dto.Notas;
-        // Guid.Empty (no Guid.NewGuid()) para los teléfonos nuevos -- ver el comentario detallado en
-        // ActualizarClienteUseCase (ClienteUseCases.cs) sobre por qué un Id ya asignado hace que EF Core
-        // confunda un ProveedorTelefono nuevo con uno existente cuando el proveedor padre ya está rastreado.
+        entity.Nombre = dto.Nombre; entity.PaisId = dto.PaisId; entity.RegionId = dto.RegionId; entity.CiudadId = dto.CiudadId; entity.CategoriaId = dto.CategoriaId; entity.Estado = dto.Estado; entity.Contacto = dto.Contacto; entity.CargoContacto = dto.CargoContacto; entity.Web = dto.Web; entity.Direccion = dto.Direccion; entity.Aforo = dto.Aforo; entity.CostoReferencia = dto.CostoReferencia; entity.Score = dto.Score; entity.Presupuesto = dto.Presupuesto; entity.Cobertura = dto.Cobertura; entity.Notas = dto.Notas;
+        // Guid.Empty (no Guid.NewGuid()) para los teléfonos y correos nuevos -- ver el comentario
+        // detallado en ActualizarClienteUseCase (ClienteUseCases.cs) sobre por qué un Id ya asignado
+        // hace que EF Core confunda una fila nueva con una existente cuando el proveedor padre ya
+        // está rastreado.
         entity.Telefonos.Clear(); foreach (var phone in dto.Telefonos) entity.Telefonos.Add(new ProveedorTelefono { Id = phone.Id ?? Guid.Empty, ProveedorId = entity.Id, Telefono = phone.Telefono, Etiqueta = phone.Etiqueta });
+        entity.Emails.Clear(); foreach (var mail in dto.Emails) entity.Emails.Add(new ProveedorEmail { Id = mail.Id ?? Guid.Empty, ProveedorId = entity.Id, Email = mail.Email, Etiqueta = mail.Etiqueta });
         entity.Servicios.Clear(); foreach (var servicioId in dto.ServicioIds.Distinct()) entity.Servicios.Add(new ProveedorServicio { ProveedorId = entity.Id, ServicioId = servicioId });
     }
     public static ProveedorResponseDto ToResponse(Proveedor entity) => new()
     {
-        Id = entity.Id, Nombre = entity.Nombre, PaisId = entity.PaisId, RegionId = entity.RegionId, CiudadId = entity.CiudadId, CategoriaId = entity.CategoriaId, Estado = entity.Estado, Contacto = entity.Contacto, CargoContacto = entity.CargoContacto, Email = entity.Email, Web = entity.Web, Direccion = entity.Direccion, Aforo = entity.Aforo, CostoReferencia = entity.CostoReferencia, Score = entity.Score, Presupuesto = entity.Presupuesto, Cobertura = entity.Cobertura, Notas = entity.Notas, CreatedAt = entity.CreatedAt, UpdatedAt = entity.UpdatedAt,
-        Telefonos = entity.Telefonos.Select(x => new ProveedorTelefonoDto { Id = x.Id, Telefono = x.Telefono, Etiqueta = x.Etiqueta }).ToList(), ServicioIds = entity.Servicios.Select(x => x.ServicioId).ToList(),
+        Id = entity.Id, Nombre = entity.Nombre, PaisId = entity.PaisId, RegionId = entity.RegionId, CiudadId = entity.CiudadId, CategoriaId = entity.CategoriaId, Estado = entity.Estado, Contacto = entity.Contacto, CargoContacto = entity.CargoContacto, Web = entity.Web, Direccion = entity.Direccion, Aforo = entity.Aforo, CostoReferencia = entity.CostoReferencia, Score = entity.Score, Presupuesto = entity.Presupuesto, Cobertura = entity.Cobertura, Notas = entity.Notas, CreatedAt = entity.CreatedAt, UpdatedAt = entity.UpdatedAt,
+        Telefonos = entity.Telefonos.Select(x => new ProveedorTelefonoDto { Id = x.Id, Telefono = x.Telefono, Etiqueta = x.Etiqueta }).ToList(),
+        Emails = entity.Emails.Select(x => new ProveedorEmailDto { Id = x.Id, Email = x.Email, Etiqueta = x.Etiqueta }).ToList(),
+        ServicioIds = entity.Servicios.Select(x => x.ServicioId).ToList(),
         // Colaboradores.Usuario puede venir null si el repositorio no lo incluyó (por ejemplo, en pruebas
         // que arman un Proveedor a mano) -- se filtra en vez de lanzar, ver ProveedorRepository.GetByIdAsync/GetAllAsync.
         Colaboradores = entity.Colaboradores.Where(x => x.Usuario is not null)

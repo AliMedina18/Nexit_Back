@@ -12,8 +12,12 @@ public class UpdateProveedorValidator : AbstractValidator<UpdateProveedorDto>
         RuleFor(x => x.Nombre).NotEmpty().MaximumLength(255);
         RuleFor(x => x.PaisId).NotEmpty();
         RuleFor(x => x.CategoriaId).NotEmpty();
-        RuleFor(x => x.Email).EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.Email));
-        RuleFor(x => x.Email).MustAsync(async (dto, email, ct) => !await repository.ExistsByEmailAsync(email!, dto.Id, ct)).WithMessage("El email ya está registrado").When(x => !string.IsNullOrWhiteSpace(x.Email));
+        // Lista simple de correos, sin "principal" (2026-09-06) -- ver el comentario detallado en
+        // UpdateClienteValidator, mismo patrón aplicado acá a Proveedor.
+        RuleForEach(x => x.Emails).ChildRules(mail => mail.RuleFor(x => x.Email).NotEmpty().EmailAddress());
+        RuleForEach(x => x.Emails)
+            .MustAsync(async (dto, mail, ct) => string.IsNullOrWhiteSpace(mail.Email) || !await repository.ExistsByEmailAsync(mail.Email, dto.Id, ct))
+            .WithMessage("El email ya está registrado");
         RuleFor(x => x.Score).InclusiveBetween(1, 5).When(x => x.Score.HasValue);
         RuleForEach(x => x.Telefonos).ChildRules(phone => phone.RuleFor(x => x.Telefono).NotEmpty().MaximumLength(50));
     }

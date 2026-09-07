@@ -54,6 +54,13 @@ public class CatalogosController(ICatalogosService catalogos) : BaseController
     [HttpPut("estados-proyecto/{id:guid}"), Authorize(Policy = "AdminOrAbove")]
     public Task<EstadoProyectoDto> ActualizarEstado(Guid id, CrearEstadoProyectoDto dto, CancellationToken ct) => catalogos.ActualizarEstadoAsync(id, dto, ct);
 
+    [HttpGet("etapas-cliente")]
+    public Task<IReadOnlyList<EtapaClienteDto>> GetEtapasCliente(CancellationToken ct) => catalogos.GetEtapasClienteAsync(ct);
+    [HttpPost("etapas-cliente"), Authorize(Policy = "AdminOrAbove")]
+    public Task<EtapaClienteDto> CrearEtapaCliente(CrearEtapaClienteDto dto, CancellationToken ct) => catalogos.CrearEtapaClienteAsync(dto, ct);
+    [HttpPut("etapas-cliente/{id:guid}"), Authorize(Policy = "AdminOrAbove")]
+    public Task<EtapaClienteDto> ActualizarEtapaCliente(Guid id, CrearEtapaClienteDto dto, CancellationToken ct) => catalogos.ActualizarEtapaClienteAsync(id, dto, ct);
+
     [HttpDelete("{tipo}/{id:guid}"), Authorize(Policy = "AdminOrAbove")]
     public async Task<IActionResult> Eliminar(string tipo, Guid id, CancellationToken ct)
     {

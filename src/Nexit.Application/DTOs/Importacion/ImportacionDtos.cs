@@ -8,9 +8,15 @@ public class ImportarErrorDto
     public string Mensaje { get; set; } = string.Empty;
 }
 
-/// <summary>Resultado de importar un archivo .xlsx completo: cuántas filas sí se crearon y el detalle de las que no.</summary>
+/// <summary>
+/// Resultado de importar un archivo .xlsx completo (docs/31, docs/35): cuántas filas se crearon,
+/// cuántas ya existían y se actualizaron en su lugar (reimportar el mismo archivo no duplica), y el
+/// detalle de las que no se pudieron procesar.
+/// </summary>
 public class ImportarResultadoDto
 {
     public int Creados { get; set; }
+    /// <summary>Filas que ya existían (mismo nombre -- o mismo cliente+nombre en Proyectos) y se actualizaron con los datos de esta fila en vez de crear un duplicado.</summary>
+    public int Actualizados { get; set; }
     public List<ImportarErrorDto> Errores { get; set; } = [];
 }

@@ -32,8 +32,8 @@ internal static class CalendarioMapper
 {
     public static ProyectoCalendarioItemDto ToDto(Core.Interfaces.ProyectoCalendarioItem item) => new()
     {
-        Id = item.Id, Nombre = item.Nombre, FechaEvento = item.FechaEvento, ClienteId = item.ClienteId,
-        ClienteNombre = item.ClienteNombre, EstadoNombre = item.EstadoNombre, Prioridad = item.Prioridad,
-        Ciudad = item.Ciudad, SedeNext = item.SedeNext
+        Id = item.Id, Nombre = item.Nombre, FechaEvento = item.FechaEvento, FechaEventoLocal = item.FechaEventoLocal,
+        ClienteId = item.ClienteId, ClienteNombre = item.ClienteNombre, EstadoNombre = item.EstadoNombre,
+        Prioridad = item.Prioridad, Ciudad = item.Ciudad, SedeNext = item.SedeNext
     };
 }

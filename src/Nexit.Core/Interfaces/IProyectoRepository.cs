@@ -15,7 +15,12 @@ public record ConteoMesProyectos(int Mes, int Cantidad);
 /// a propósito NO es la entidad Proyecto completa (sin equipo/proveedores/seguimiento): evita cargar
 /// esos datos relacionados cuando solo se necesita la lista para pintar el calendario de ese mes.
 /// </summary>
-public record ProyectoCalendarioItem(Guid Id, string Nombre, DateTime FechaEvento, Guid? ClienteId, string? ClienteNombre, string EstadoNombre, string? Prioridad, string? Ciudad, string? SedeNext);
+// FechaEventoLocal ("yyyy-MM-dd", vacio hasta que se calcula) se llena DESPUES de traer los
+// candidatos a memoria en ProyectoRepository.ObtenerPorMesAsync (con with) -- no se puede pedir
+// en el select de la consulta SQL porque SedeTimeZoneResolver no es traducible a SQL (ver el
+// comentario en ese metodo). Consumida por CalendarioController/{anio}/{mes} para que el frontend
+// agrupe cada proyecto en el DIA local de su sede, no en el dia UTC (docs/18).
+public record ProyectoCalendarioItem(Guid Id, string Nombre, DateTime FechaEvento, Guid? ClienteId, string? ClienteNombre, string EstadoNombre, string? Prioridad, string? Ciudad, string? SedeNext, string FechaEventoLocal = "");
 
 public interface IProyectoRepository : IRepository<Proyecto>
 {
@@ -27,4 +32,13 @@ public interface IProyectoRepository : IRepository<Proyecto>
 
     /// <summary>Proyectos (proyección liviana) cuya fecha_evento cae en un mes/año específico, para cuando alguien entra a ver ese mes del calendario.</summary>
     Task<IReadOnlyList<ProyectoCalendarioItem>> ObtenerPorMesAsync(int anio, int mes, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Busca un proyecto por su cliente (puede ser null -- "sin cliente" es válido) y su nombre exacto
+    /// (sin distinguir mayúsculas) -- para la importación masiva (docs/31, docs/35). El nombre solo NO
+    /// alcanza como llave: el mismo nombre de proyecto puede repetirse legítimamente para clientes
+    /// distintos (o para varios proyectos "sin cliente"), así que la pareja (Cliente, Nombre) es la
+    /// llave que evita fusionar por error dos proyectos que no tienen nada que ver.
+    /// </summary>
+    Task<Guid?> FindIdPorClienteYNombreAsync(Guid? clienteId, string nombre, CancellationToken cancellationToken = default);
 }

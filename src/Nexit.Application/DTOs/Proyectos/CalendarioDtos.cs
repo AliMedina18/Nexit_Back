@@ -19,6 +19,10 @@ public class ProyectoCalendarioItemDto
     public Guid Id { get; init; }
     public string Nombre { get; init; } = string.Empty;
     public DateTime FechaEvento { get; init; }
+    /// <summary>"yyyy-MM-dd" -- fecha del evento YA convertida a la hora local de la sede del proyecto
+    /// (ver SedeTimeZoneResolver, docs/18). Usala para decidir en que dia pintar el proyecto en el
+    /// calendario; NO recalcules el dia cortando FechaEvento (que sigue en UTC).</summary>
+    public string FechaEventoLocal { get; init; } = string.Empty;
     public Guid? ClienteId { get; init; }
     public string? ClienteNombre { get; init; }
     public string EstadoNombre { get; init; } = string.Empty;
