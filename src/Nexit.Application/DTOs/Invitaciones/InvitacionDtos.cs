@@ -29,16 +29,22 @@ public class InvitacionResponseDto
     public DateTime? FechaRespuesta { get; set; }
 }
 
+/// <summary>Un destinatario del lote, con su propio rol -- Alicia 2026-09-09: puede invitar en un
+/// mismo envío a gente con roles distintos (varios miembros, un admin, un directivo).</summary>
+public class InvitacionLoteDestinatarioDto
+{
+    public string Email { get; set; } = string.Empty;
+    public string Rol { get; set; } = "miembro";
+}
+
 /// <summary>
 /// Invitar a varias personas de una sola vez (estilo Gmail: se escriben varios correos separados y
-/// se manda una sola vez). Todas comparten el mismo rol propuesto y el mismo mensaje -- si hicieran
-/// falta roles distintos, son dos envíos distintos, que es más claro que una tabla de correo+rol
-/// dentro de un modal.
+/// se manda una sola vez). Cada destinatario lleva su propio rol -- se pueden mezclar roles
+/// distintos en un mismo envío -- pero todos comparten el mismo mensaje de bienvenida.
 /// </summary>
 public class CrearInvitacionesLoteDto
 {
-    public List<string> Emails { get; set; } = [];
-    public string Rol { get; set; } = "miembro";
+    public List<InvitacionLoteDestinatarioDto> Destinatarios { get; set; } = [];
     public string? Mensaje { get; set; }
 }
 

@@ -10,14 +10,31 @@ using Nexit.Core.Interfaces;
 
 namespace Nexit.Application.UseCases.Invitaciones;
 
-public class CrearInvitacionUseCase(IInvitacionEquipoRepository repository, ISupabaseAuthAdminService authAdmin, IUnitOfWork unitOfWork) : ICrearInvitacionUseCase
+public class CrearInvitacionUseCase(IInvitacionEquipoRepository repository, IUsuarioRepository usuarios, ISupabaseAuthAdminService authAdmin, IUnitOfWork unitOfWork) : ICrearInvitacionUseCase
 {
+    /// <summary>Mismas etiquetas que ROL_LABELS en el frontend (usuarios/page.tsx) -- solo para el
+    /// correo de invitación (docs/42); si algún día se desincronizan no rompe nada, en el peor caso
+    /// el correo muestra el nombre técnico del rol en vez de la etiqueta bonita.</summary>
+    private static readonly Dictionary<string, string> RolLabels = new()
+    {
+        [Roles.SuperAdmin] = "Super admin", [Roles.Admin] = "Admin", [Roles.Manager] = "Director", [Roles.Miembro] = "Miembro",
+    };
+
     public async Task<InvitacionResponseDto> ExecuteAsync(CrearInvitacionDto input, Guid usuarioId, CancellationToken ct = default)
     {
+        // Quien invita, para que el correo (docs/42) pueda decir "Fulana te invitó" en vez de solo
+        // "Te invitaron" -- se busca ANTES de invitar porque si por lo que sea no se encuentra (no
+        // debería pasar: es quien está autenticado y pasó por la validación del endpoint), la
+        // invitación se sigue mandando igual, solo que sin ese dato en el correo.
+        var invitador = await usuarios.GetByIdAsync(usuarioId, ct);
+        var datosCorreo = new Dictionary<string, string> { ["rol"] = RolLabels.GetValueOrDefault(input.Rol, input.Rol) };
+        if (ConsultarInvitacionesUseCase.NombreCompleto(invitador) is { } nombreInvitador) datosCorreo["invitadoPor"] = nombreInvitador;
+        if (!string.IsNullOrWhiteSpace(input.Mensaje)) datosCorreo["mensaje"] = input.Mensaje;
+
         // Primero se dispara la invitación real por Supabase -- si eso falla (Service Role Key sin
         // configurar, Supabase caído, correo ya registrado), no queda ninguna invitación "pendiente"
         // a medias en nuestra base sin que se haya enviado nada de verdad.
-        await authAdmin.InvitarUsuarioAsync(input.Email, ct);
+        await authAdmin.InvitarUsuarioAsync(input.Email, datosCorreo, ct);
 
         var invitacion = new InvitacionEquipo
         {
@@ -26,7 +43,7 @@ public class CrearInvitacionUseCase(IInvitacionEquipoRepository repository, ISup
         };
         await repository.AddAsync(invitacion, ct);
         await unitOfWork.SaveChangesAsync(ct);
-        return InvitacionMapper.ToResponse(invitacion, invitadoPorNombre: null);
+        return InvitacionMapper.ToResponse(invitacion, ConsultarInvitacionesUseCase.NombreCompleto(invitador));
     }
 }
 
@@ -35,7 +52,9 @@ public class CrearInvitacionUseCase(IInvitacionEquipoRepository repository, ISup
 /// individual correo por correo, así que las reglas son exactamente las mismas (dominio permitido,
 /// que no exista ya el usuario, que no haya otra invitación pendiente) y no hay una segunda copia
 /// de esas reglas que se pueda desincronizar. Cada correo se resuelve por separado a propósito: un
-/// correo repetido o de un dominio ajeno no debe impedir que los demás se inviten.
+/// correo repetido o de un dominio ajeno no debe impedir que los demás se inviten -- y cada uno
+/// lleva su propio rol (Alicia 2026-09-09: un mismo envío puede mezclar miembros, un admin y un
+/// directivo).
 /// </summary>
 public class CrearInvitacionesLoteUseCase(ICrearInvitacionUseCase crear, IValidator<CrearInvitacionDto> validador) : ICrearInvitacionesLoteUseCase
 {
@@ -44,20 +63,21 @@ public class CrearInvitacionesLoteUseCase(ICrearInvitacionUseCase crear, IValida
         var resultado = new InvitacionesLoteResponseDto();
         // Normaliza y quita repetidos DENTRO del mismo envío (escribir dos veces el mismo correo en
         // el modal es un error de dedo, no dos invitaciones) -- los repetidos contra la base los
-        // sigue detectando el validador de siempre.
-        var emails = input.Emails
-            .Select(x => (x ?? string.Empty).Trim())
-            .Where(x => x.Length > 0)
-            .DistinctBy(x => x.ToLowerInvariant())
+        // sigue detectando el validador de siempre. Si el mismo correo viene dos veces con roles
+        // distintos, se queda con el primero -- el modal no debería dejar que pase, pero por si acaso.
+        var destinatarios = input.Destinatarios
+            .Select(x => new { Email = (x.Email ?? string.Empty).Trim(), x.Rol })
+            .Where(x => x.Email.Length > 0)
+            .DistinctBy(x => x.Email.ToLowerInvariant())
             .ToList();
 
-        foreach (var email in emails)
+        foreach (var destinatario in destinatarios)
         {
-            var individual = new CrearInvitacionDto { Email = email, Rol = input.Rol, Mensaje = input.Mensaje };
+            var individual = new CrearInvitacionDto { Email = destinatario.Email, Rol = destinatario.Rol, Mensaje = input.Mensaje };
             var validacion = await validador.ValidateAsync(individual, ct);
             if (!validacion.IsValid)
             {
-                resultado.Fallidas.Add(new InvitacionFallidaDto { Email = email, Motivo = string.Join(" ", validacion.Errors.Select(e => e.ErrorMessage)) });
+                resultado.Fallidas.Add(new InvitacionFallidaDto { Email = destinatario.Email, Motivo = string.Join(" ", validacion.Errors.Select(e => e.ErrorMessage)) });
                 continue;
             }
             try
@@ -68,7 +88,7 @@ public class CrearInvitacionesLoteUseCase(ICrearInvitacionUseCase crear, IValida
             {
                 // Falla propia de Supabase para ESE correo (ya tiene cuenta, rechazo del proveedor de
                 // correo, etc.). Se anota y se sigue con el resto del lote.
-                resultado.Fallidas.Add(new InvitacionFallidaDto { Email = email, Motivo = ex.Message });
+                resultado.Fallidas.Add(new InvitacionFallidaDto { Email = destinatario.Email, Motivo = ex.Message });
             }
         }
         return resultado;

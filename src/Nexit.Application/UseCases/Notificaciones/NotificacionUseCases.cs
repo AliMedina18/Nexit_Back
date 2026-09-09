@@ -79,6 +79,22 @@ internal static class NotificacionFactory
     };
 
     /// <summary>
+    /// Un director eliminó un cliente/proveedor/proyecto DIRECTO, sin pasar por una solicitud
+    /// (Alicia 2026-09-09: "los directores sí podrían borrar proyectos... claramente se recibe la
+    /// notificación al administrador"). A diferencia de las demás notificaciones de este archivo,
+    /// esta no nace de una <see cref="SolicitudEliminacion"/> -- no existe ninguna, el borrado ya
+    /// ocurrió -- así que la arman directamente EliminarClienteUseCase/EliminarProveedorUseCase/
+    /// EliminarProyectoUseCase.
+    /// </summary>
+    public static Notificacion EliminacionDirectaDirector(Guid adminId, string tipoEntidad, Guid entidadId, string nombreDirector) => new()
+    {
+        UsuarioDestinatarioId = adminId, Tipo = "eliminacion_directa_director",
+        Titulo = $"Un director eliminó {Articulo(tipoEntidad)}",
+        Mensaje = $"{nombreDirector} eliminó {Articulo(tipoEntidad)} directamente, sin pasar por una solicitud.",
+        TipoEntidad = tipoEntidad, EntidadId = entidadId
+    };
+
+    /// <summary>
     /// Le avisa a quien invitó que ya le respondieron (2026-09-08). Sin esto, la única forma de
     /// enterarse era entrar a Usuarios y notar que la invitación desapareció de la lista de
     /// pendientes -- nadie revisa eso a diario, así que en la práctica no se enteraba.

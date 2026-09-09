@@ -9,7 +9,8 @@ using Nexit.Core.Interfaces;
 namespace Nexit.Application.UseCases.SolicitudesEliminacion;
 
 public class SolicitarEliminacionUseCase(
-    ISolicitudEliminacionRepository solicitudes, IProyectoRepository proyectos, IUsuarioRepository usuarios,
+    ISolicitudEliminacionRepository solicitudes, IClienteRepository clientes, IProveedorRepository proveedores,
+    IProyectoRepository proyectos, IUsuarioRepository usuarios,
     INotificacionRepository notificaciones, IUnitOfWork unitOfWork) : ISolicitarEliminacionUseCase
 {
     public async Task<SolicitudEliminacionResponseDto> ExecuteAsync(CrearSolicitudEliminacionDto input, Guid solicitanteId, CancellationToken cancellationToken = default)
@@ -36,9 +37,10 @@ public class SolicitarEliminacionUseCase(
 
         Guid? gerenteResponsableId = null;
         var estado = "pendiente_admin";
+        Proyecto? proyecto = null;
         if (input.TipoEntidad == TiposEntidadEliminable.Proyecto)
         {
-            var proyecto = await proyectos.GetByIdAsync(input.EntidadId, cancellationToken) ?? throw new EntityNotFoundException("Proyecto", input.EntidadId);
+            proyecto = await proyectos.GetByIdAsync(input.EntidadId, cancellationToken) ?? throw new EntityNotFoundException("Proyecto", input.EntidadId);
             // Si el proyecto tiene un gerente responsable distinto de quien solicita, primero debe
             // endosarla ese gerente. Si el solicitante ES el gerente responsable, o el proyecto todavía
             // no tiene gerente asignado, la solicitud va directo al administrador.
@@ -48,9 +50,23 @@ public class SolicitarEliminacionUseCase(
                 estado = "pendiente_gerente";
             }
         }
+
+        // Fotografía del nombre al momento de pedirla (ver SolicitudEliminacion.EntidadNombre): para
+        // cuando alguien la revise -- a veces días después, y a veces ya aprobada por otra vía -- la
+        // entidad puede llevar rato borrada, y sin esto no había forma de saber qué (o a quién) se
+        // había pedido eliminar, más allá de un id sin nombre.
+        var entidadNombre = input.TipoEntidad switch
+        {
+            TiposEntidadEliminable.Usuario => usuarioObjetivo is { } u ? $"{u.Nombre} {u.Apellido}".Trim() : null,
+            TiposEntidadEliminable.Proyecto => proyecto?.Nombre,
+            TiposEntidadEliminable.Cliente => (await clientes.GetByIdAsync(input.EntidadId, cancellationToken))?.Nombre,
+            TiposEntidadEliminable.Proveedor => (await proveedores.GetByIdAsync(input.EntidadId, cancellationToken))?.Nombre,
+            _ => null,
+        };
+
         var solicitud = new SolicitudEliminacion
         {
-            TipoEntidad = input.TipoEntidad, EntidadId = input.EntidadId, SolicitadoPorId = solicitanteId,
+            TipoEntidad = input.TipoEntidad, EntidadId = input.EntidadId, EntidadNombre = entidadNombre, SolicitadoPorId = solicitanteId,
             Motivo = input.Motivo, Estado = estado, GerenteResponsableId = gerenteResponsableId
         };
         await solicitudes.AddAsync(solicitud, cancellationToken);
@@ -219,23 +235,58 @@ public class RechazarComoAdminUseCase(ISolicitudEliminacionRepository solicitude
     }
 }
 
-public class ConsultarSolicitudesEliminacionUseCase(ISolicitudEliminacionRepository solicitudes) : IConsultarSolicitudesEliminacionUseCase
+public class ConsultarSolicitudesEliminacionUseCase(ISolicitudEliminacionRepository solicitudes, IUsuarioEliminadoRepository usuariosEliminados) : IConsultarSolicitudesEliminacionUseCase
 {
-    public async Task<IReadOnlyList<SolicitudEliminacionResponseDto>> ListAsync(CancellationToken cancellationToken = default) =>
-        (await solicitudes.GetAllAsync(cancellationToken)).Select(SolicitudEliminacionMapper.ToResponse).ToList();
+    public async Task<IReadOnlyList<SolicitudEliminacionResponseDto>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        var dtos = (await solicitudes.GetAllAsync(cancellationToken)).Select(SolicitudEliminacionMapper.ToResponse).ToList();
+        await CompletarNombresDeCuentasEliminadasAsync(dtos, cancellationToken);
+        return dtos;
+    }
 
+    // Las que le tocan a un gerente son siempre de proyecto (ver SolicitarEliminacionUseCase), nunca
+    // de una cuenta -- no hace falta completar nada acá.
     public async Task<IReadOnlyList<SolicitudEliminacionResponseDto>> ListPendientesParaGerenteAsync(Guid gerenteId, CancellationToken cancellationToken = default) =>
         (await solicitudes.GetPendientesParaGerenteAsync(gerenteId, cancellationToken)).Select(SolicitudEliminacionMapper.ToResponse).ToList();
 
-    public async Task<SolicitudEliminacionResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
-        SolicitudEliminacionMapper.ToResponse(await solicitudes.GetByIdAsync(id, cancellationToken) ?? throw new EntityNotFoundException("SolicitudEliminacion", id));
+    public async Task<SolicitudEliminacionResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var dto = SolicitudEliminacionMapper.ToResponse(await solicitudes.GetByIdAsync(id, cancellationToken) ?? throw new EntityNotFoundException("SolicitudEliminacion", id));
+        await CompletarNombresDeCuentasEliminadasAsync([dto], cancellationToken);
+        return dto;
+    }
+
+    /// <summary>
+    /// Respaldo para solicitudes de eliminar una CUENTA creadas antes del 2026-09-09, cuando
+    /// SolicitudEliminacion todavía no guardaba su propia fotografía del nombre (EntidadNombre): sin
+    /// eso, y con la cuenta ya borrada, la única forma de saber quién era esa persona es el respaldo
+    /// de <c>usuarios_eliminados</c> que ya se guarda desde antes al eliminarla (ver UsuarioEliminado).
+    /// </summary>
+    private async Task CompletarNombresDeCuentasEliminadasAsync(List<SolicitudEliminacionResponseDto> dtos, CancellationToken cancellationToken)
+    {
+        var idsFaltantes = dtos
+            .Where(d => d.TipoEntidad == TiposEntidadEliminable.Usuario && string.IsNullOrEmpty(d.EntidadNombre))
+            .Select(d => d.EntidadId)
+            .Distinct()
+            .ToList();
+        if (idsFaltantes.Count == 0) return;
+
+        var respaldos = await usuariosEliminados.GetByUsuarioIdsOriginalAsync(idsFaltantes, cancellationToken);
+        foreach (var dto in dtos)
+        {
+            if (dto.TipoEntidad == TiposEntidadEliminable.Usuario && string.IsNullOrEmpty(dto.EntidadNombre)
+                && respaldos.TryGetValue(dto.EntidadId, out var respaldo))
+                dto.EntidadNombre = $"{respaldo.Nombre} {respaldo.Apellido}".Trim();
+        }
+    }
 }
 
 internal static class SolicitudEliminacionMapper
 {
     public static SolicitudEliminacionResponseDto ToResponse(SolicitudEliminacion solicitud) => new()
     {
-        Id = solicitud.Id, TipoEntidad = solicitud.TipoEntidad, EntidadId = solicitud.EntidadId, SolicitadoPorId = solicitud.SolicitadoPorId,
+        Id = solicitud.Id, TipoEntidad = solicitud.TipoEntidad, EntidadId = solicitud.EntidadId, EntidadNombre = solicitud.EntidadNombre,
+        SolicitadoPorId = solicitud.SolicitadoPorId,
         Motivo = solicitud.Motivo, Estado = solicitud.Estado, GerenteResponsableId = solicitud.GerenteResponsableId,
         AprobadoPorGerenteId = solicitud.AprobadoPorGerenteId, AprobadoPorGerenteEn = solicitud.AprobadoPorGerenteEn,
         RevisadoPorId = solicitud.RevisadoPorId, RevisadoEn = solicitud.RevisadoEn, ComentarioRevision = solicitud.ComentarioRevision,

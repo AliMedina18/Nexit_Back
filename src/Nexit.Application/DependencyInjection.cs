@@ -38,7 +38,6 @@ public static class DependencyInjection
         services.AddScoped<IEliminarProyectoUseCase, EliminarProyectoUseCase>();
         services.AddScoped<IAgregarSeguimientoProyectoUseCase, AgregarSeguimientoProyectoUseCase>();
         services.AddScoped<IConsultarSeguimientoProyectoUseCase, ConsultarSeguimientoProyectoUseCase>();
-        services.AddScoped<IConsultarCalendarioProyectosUseCase, ConsultarCalendarioProyectosUseCase>();
         services.AddScoped<IConsultarPrioridadProyectosUseCase, ConsultarPrioridadProyectosUseCase>();
         services.AddScoped<IConsultarInformesUseCase, ConsultarInformesUseCase>();
         services.AddScoped<IGenerarInformeSnapshotUseCase, GenerarInformeSnapshotUseCase>();
@@ -46,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<IRegistrarUsuarioUseCase, RegistrarUsuarioUseCase>();
         services.AddScoped<IActualizarUsuarioUseCase, ActualizarUsuarioUseCase>();
         services.AddScoped<IConsultarUsuariosUseCase, ConsultarUsuariosUseCase>();
+        services.AddScoped<IConsultarUsuariosEquipoUseCase, ConsultarUsuariosEquipoUseCase>();
         services.AddScoped<IEliminarUsuariosInactivosUseCase, EliminarUsuariosInactivosUseCase>();
         services.AddScoped<ISolicitarEliminacionUseCase, SolicitarEliminacionUseCase>();
         services.AddScoped<IAprobarComoGerenteUseCase, AprobarComoGerenteUseCase>();

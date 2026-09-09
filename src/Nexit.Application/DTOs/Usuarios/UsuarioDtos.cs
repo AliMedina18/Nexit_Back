@@ -60,3 +60,18 @@ public class UsuarioResponseDto
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// Version liviana para armar el equipo de un proyecto (Alicia 2026-09-09): a diferencia de
+/// <see cref="UsuarioResponseDto"/> (directorio completo, admin/super_admin), esto lo puede pedir
+/// CUALQUIER autenticado con perfil -- crear/editar un proyecto no es exclusivo de admin+, así que
+/// buscar a quién agregar al equipo tampoco puede serlo. Sin correo ni datos de cuenta a propósito:
+/// es solo lo que hace falta para mostrar un nombre en un buscador, no el directorio entero.
+/// </summary>
+public class UsuarioEquipoDto
+{
+    public Guid Id { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public string Apellido { get; set; } = string.Empty;
+    public string Rol { get; set; } = string.Empty;
+}

@@ -180,6 +180,30 @@ public class UsuariosTests
         Assert.Equal("Ana", result[0].Nombre);
     }
 
+    // -- Endpoint /api/usuarios/equipo (2026-09-09): a diferencia de ConsultarUsuarios (sólo
+    // AdminOrAbove), este lo puede llamar cualquier usuario autenticado -- lo necesita el
+    // buscador de "miembros del equipo" al armar un proyecto, y esa pantalla no está restringida
+    // a administradores. Por eso el DTO es deliberadamente liviano (sin email ni Activo) y el
+    // filtro deja afuera admin/super_admin e inactivos.
+    [Fact]
+    public async Task ConsultarUsuariosEquipo_returns_only_active_miembro_and_manager_users_ordered_by_name()
+    {
+        var repository = new Mock<IUsuarioRepository>();
+        repository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([
+            new Usuario { Nombre = "Zoe", Apellido = "Ruiz", Rol = Roles.Miembro, Activo = true },
+            new Usuario { Nombre = "Ana", Apellido = "Gómez", Rol = Roles.Manager, Activo = true },
+            new Usuario { Nombre = "Beto", Apellido = "Admin", Rol = Roles.Admin, Activo = true },
+            new Usuario { Nombre = "Cami", Apellido = "Root", Rol = Roles.SuperAdmin, Activo = true },
+            new Usuario { Nombre = "Inés", Apellido = "Baja", Rol = Roles.Miembro, Activo = false },
+        ]);
+
+        var result = await new ConsultarUsuariosEquipoUseCase(repository.Object).ListAsync();
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("Ana", result[0].Nombre);
+        Assert.Equal("Zoe", result[1].Nombre);
+    }
+
     // --- Alta manual, sin correo de invitación de por medio (2026-09-08, docs/38).
 
     [Fact]

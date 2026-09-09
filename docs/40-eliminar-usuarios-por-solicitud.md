@@ -50,17 +50,35 @@ la fila se conserva con el "quién" en blanco, y quién era esa persona queda en
 
 ---
 
-## 2. Qué correr en Supabase
+## 2. Qué correr, y contra qué base
 
-Un solo archivo, una sola vez, en el SQL Editor:
+Un solo archivo, una sola vez, **contra la base a la que apunta el backend que estés usando**:
 
 ```
 docs/schema/25_gestion_usuarios_al_dia.sql
 ```
 
-Es idempotente (se puede correr dos veces sin daño) y no borra datos. Trae las cuatro cosas de
-arriba. Al final del archivo hay cuatro consultas de verificación comentadas, y al principio una de
-diagnóstico por si quieres mirar antes de tocar nada.
+Esto es lo que más confusión causó: `dotnet run` arranca en entorno **Development**, y ahí manda
+`appsettings.Development.json` → **Postgres local, base `nexit_dev`**. El error 42P01 salía de esa
+base, no de Supabase. Hay que correrlo en las dos si se usan las dos:
+
+| Backend | Base | Cómo |
+|---|---|---|
+| `dotnet run` / F5 (Development) | `nexit_dev` en localhost | pgAdmin/DBeaver, o `psql -h localhost -U postgres -d nexit_dev -f docs/schema/25_gestion_usuarios_al_dia.sql` |
+| Publicado (Production) | Supabase | SQL Editor de Supabase |
+
+Es idempotente (se puede correr dos veces sin daño) y no borra datos. Al final del archivo hay
+consultas de verificación comentadas, y al principio una de diagnóstico por si quieres mirar antes de
+tocar nada.
+
+**Verificado contra Postgres 16 real** (2026-09-09) sobre una base que reproducía el estado de
+`nexit_dev`: sin `invitaciones_equipo`, con los CHECK viejos, con los tres FK en RESTRICT y con una
+persona que tenía historial y una solicitud a su nombre. Antes del script, borrarla fallaba con
+violación de llave foránea; después, se borra y tanto el historial como la solicitud sobreviven con el
+"quién" en `NULL`. Segunda pasada: sin errores. Los CHECK siguen rechazando valores inválidos.
+
+El bloque de RLS se salta solo cuando el rol `nexit_app` no existe (es el caso de `nexit_dev`): sin
+eso, el script entero se caía en la base local con `role "nexit_app" does not exist`.
 
 **No** corras la migración `20260908222937_AddEliminacionUsuarioPorSolicitud` contra Supabase: el
 snapshot del modelo venía atrasado respecto a los scripts 20/21/22, así que esa migración también

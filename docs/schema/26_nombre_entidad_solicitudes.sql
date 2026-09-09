@@ -1,0 +1,25 @@
+-- ============================================================
+-- Nombre de la entidad al pedir una eliminación (2026-09-09)
+-- ============================================================
+-- Corre esto UNA VEZ contra la base a la que apunta tu backend. Es idempotente: si lo corres dos
+-- veces no pasa nada. No borra datos.
+--
+--   * Local (`dotnet run` / F5, entorno Development) -> Postgres local, base `nexit_dev`:
+--         psql -h localhost -U postgres -d nexit_dev -f docs/schema/26_nombre_entidad_solicitudes.sql
+--   * Publicado (entorno Production) -> Supabase -> pégalo en su SQL Editor.
+--
+-- Hay que correrlo en LAS DOS si usas las dos.
+--
+-- Qué arregla: "solicitudes_eliminacion" no guardaba el nombre de lo que se pedía eliminar, solo su
+-- id. Para una solicitud ya aprobada -- donde la entidad ya no existe -- no había forma de saber qué
+-- (o a quién) se había eliminado. Esta columna guarda el nombre en el momento de pedirla, así que
+-- sobrevive aunque la entidad se borre después.
+--
+-- Equivalente en el repo: migración 20260909172315_AddEntidadNombreSolicitudEliminacion. Para la
+-- base local sí se puede correr en vez de este script:
+--   dotnet ef database update --project src/Nexit.Infrastructure --startup-project src/Nexit.API
+--
+-- Las solicitudes que ya existían quedan con esta columna en NULL (no hay forma de reconstruir un
+-- nombre que nunca se guardó); el frontend ya sabe mostrar algo razonable en ese caso.
+
+ALTER TABLE solicitudes_eliminacion ADD COLUMN IF NOT EXISTS entidad_nombre varchar(255);

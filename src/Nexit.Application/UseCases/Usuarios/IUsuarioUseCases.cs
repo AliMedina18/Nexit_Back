@@ -17,6 +17,12 @@ public interface IConsultarUsuariosUseCase
     Task<IReadOnlyList<UsuarioResponseDto>> ListAsync(CancellationToken cancellationToken = default);
     Task<UsuarioResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Quiénes se pueden agregar al equipo de un proyecto -- ver <see cref="Nexit.Application.DTOs.Usuarios.UsuarioEquipoDto"/>.</summary>
+public interface IConsultarUsuariosEquipoUseCase
+{
+    Task<IReadOnlyList<UsuarioEquipoDto>> ListAsync(CancellationToken cancellationToken = default);
+}
 // IEliminarUsuarioUseCase se eliminó el 2026-09-08 (docs/40): ya no hay borrado directo de personas.
 // Lo hace AprobarComoAdminUseCase al aprobar una solicitud de tipo "usuario", y el proceso automático
 // de los 30 días vía IEliminarUsuariosInactivosUseCase.

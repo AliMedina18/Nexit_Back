@@ -57,10 +57,13 @@ public class ClientesController(ICrearClienteUseCase crear, IActualizarClienteUs
         var userId = GetUserId(); if (userId == Guid.Empty) return Unauthorized();
         return Ok(await actualizar.ExecuteAsync(dto, userId, cancellationToken));
     }
-    [HttpDelete("{id:guid}"), Authorize(Policy = "AdminOrAbove")]
+    // Director (manager) también elimina directo, sin pasar por SolicitudesEliminacionController
+    // (Alicia 2026-09-09) -- ver DirectorOrAbove en Program.cs. El administrador recibe una
+    // notificación cuando quien elimina es un director (ver EliminarClienteUseCase).
+    [HttpDelete("{id:guid}"), Authorize(Policy = "DirectorOrAbove")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        await eliminar.ExecuteAsync(id, GetUserId(), cancellationToken);
+        await eliminar.ExecuteAsync(id, GetUserId(), GetUserRole(), cancellationToken);
         return NoContent();
     }
 }

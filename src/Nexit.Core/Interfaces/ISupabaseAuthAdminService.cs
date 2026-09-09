@@ -19,8 +19,14 @@ public interface ISupabaseAuthAdminService
     /// esto SÍ lanza una excepción (<c>BusinessRuleException</c>): invitar es la acción principal de
     /// la operación, no un cleanup de mejor esfuerzo, así que no tiene sentido dejar a alguien
     /// pensando que se envió la invitación cuando en realidad no pasó nada.
+    ///
+    /// <paramref name="datos"/> (2026-09-09, docs/42) es lo que Supabase guarda como metadata de la
+    /// cuenta y lo que la plantilla "Invite user" puede mostrar en el correo vía <c>{{ .Data.xxx }}</c>
+    /// -- quién invitó, a qué rol, y el mensaje que quien invita escribió. Es opcional (invitar sin
+    /// datos sigue funcionando, solo que el correo no muestra esa parte) para no atar este método a
+    /// que siempre exista un rol o un mensaje.
     /// </summary>
-    Task InvitarUsuarioAsync(string email, CancellationToken cancellationToken = default);
+    Task InvitarUsuarioAsync(string email, IReadOnlyDictionary<string, string>? datos = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Crea la cuenta de acceso de alguien SIN mandarle un correo de invitación (2026-09-08, pedido
@@ -30,7 +36,8 @@ public interface ISupabaseAuthAdminService
     ///
     /// La cuenta se crea SIN contraseña a propósito: nadie más que la propia persona debe conocerla.
     /// La primera vez entra con el código de un solo uso que ya maneja la pantalla de login
-    /// (docs/30) y ahí mismo crea su contraseña, exactamente igual que quien llega por invitación.
+    /// (docs/30) y ahí mismo crea su contraseña. Quien llega por invitación (docs/42) ya no sigue
+    /// este mismo camino -- crea su contraseña dentro de `/registro`, al aceptar, antes de entrar.
     ///
     /// Igual que <see cref="InvitarUsuarioAsync"/> y a diferencia de <see cref="EliminarCuentaAsync"/>,
     /// lanza <c>BusinessRuleException</c> si la Service Role Key no está configurada o si Supabase

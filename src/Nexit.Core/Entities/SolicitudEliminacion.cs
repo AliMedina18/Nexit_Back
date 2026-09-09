@@ -12,6 +12,13 @@ public class SolicitudEliminacion : BaseEntity
 {
     public string TipoEntidad { get; set; } = string.Empty; // "cliente" | "proveedor" | "proyecto" | "usuario"
     public Guid EntidadId { get; set; }
+    /// <summary>
+    /// Nombre de la entidad al momento de pedir la eliminación (nombre del cliente/proveedor/proyecto,
+    /// o nombre y apellido de la persona). Se guarda como fotografía porque, para cuando alguien revisa
+    /// una solicitud ya aprobada, la entidad puede llevar tiempo borrada -- sin esto no había forma de
+    /// saber qué (o a quién) se había eliminado, más allá de un id sin nombre.
+    /// </summary>
+    public string? EntidadNombre { get; set; }
     /// <summary>Queda en <c>null</c> si esa cuenta se elimina después (ver NexitDbContext) -- la solicitud se conserva.</summary>
     public Guid? SolicitadoPorId { get; set; }
     public string? Motivo { get; set; }

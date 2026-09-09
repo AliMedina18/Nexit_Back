@@ -47,7 +47,7 @@ public class SupabaseAuthAdminService(IConfiguration configuration, ILogger<Supa
         }
     }
 
-    public async Task InvitarUsuarioAsync(string email, CancellationToken cancellationToken = default)
+    public async Task InvitarUsuarioAsync(string email, IReadOnlyDictionary<string, string>? datos = null, CancellationToken cancellationToken = default)
     {
         var projectUrl = configuration["Supabase:ProjectUrl"];
         var serviceRoleKey = configuration["Supabase:ServiceRoleKey"];
@@ -55,13 +55,19 @@ public class SupabaseAuthAdminService(IConfiguration configuration, ILogger<Supa
         {
             // A diferencia de EliminarCuentaAsync, acá SÍ se lanza -- ver el comentario en
             // ISupabaseAuthAdminService sobre por qué invitar no puede fallar en silencio.
-            throw new BusinessRuleException("No se pudo enviar la invitación: falta configurar Supabase:ProjectUrl y Supabase:ServiceRoleKey en el backend (mismas claves que usa la eliminación automática de cuentas, ver docs/17).");
+            throw new BusinessRuleException("No se pudo enviar la invitación: el envío de correos todavía no está configurado. Avísale al equipo técnico (falta Supabase:ProjectUrl y Supabase:ServiceRoleKey, mismas claves que usa la eliminación automática de cuentas, ver docs/17).");
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{projectUrl.TrimEnd('/')}/auth/v1/invite");
         request.Headers.Add("apikey", serviceRoleKey);
         request.Headers.Add("Authorization", $"Bearer {serviceRoleKey}");
-        request.Content = JsonContent.Create(new { email });
+        // "data" es lo que Supabase guarda como user_metadata y lo que la plantilla "Invite user"
+        // puede leer como {{ .Data.xxx }} (docs/42) -- quién invitó, a qué rol, y el mensaje. Se
+        // manda solo si hay algo que mandar, para no ensuciar el payload en las pruebas/llamadas
+        // que no lo necesitan.
+        request.Content = datos is { Count: > 0 }
+            ? JsonContent.Create(new { email, data = datos })
+            : JsonContent.Create(new { email });
 
         HttpResponseMessage response;
         try
@@ -71,7 +77,7 @@ public class SupabaseAuthAdminService(IConfiguration configuration, ILogger<Supa
         catch (Exception ex)
         {
             logger.LogError(ex, "Error de red al invitar a {Email} desde Supabase Auth.", email);
-            throw new BusinessRuleException("No se pudo contactar a Supabase para enviar la invitación. Intenta de nuevo en un momento.");
+            throw new BusinessRuleException("No se pudo enviar la invitación. Intenta de nuevo en un momento.");
         }
 
         if (!response.IsSuccessStatusCode)
@@ -81,8 +87,12 @@ public class SupabaseAuthAdminService(IConfiguration configuration, ILogger<Supa
             // 422 -- Supabase ya tiene una cuenta con ese correo (ya aceptó otra invitación antes,
             // o se dio de alta manual alguna vez) -- no es un error de configuración del backend.
             if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
-                throw new BusinessRuleException("Ese correo ya tiene una cuenta en Supabase Auth. Si ya es parte del equipo, créale el perfil directamente en vez de invitarlo de nuevo.");
-            throw new BusinessRuleException("Supabase no pudo enviar la invitación. Intenta de nuevo o revisa el log del backend.");
+                throw new BusinessRuleException("Ese correo ya tiene una cuenta. Si ya es parte del equipo, créale el perfil directamente en vez de invitarlo de nuevo.");
+            // "Error sending invite email" (500 unexpected_failure) es, casi siempre, que el envío de
+            // correos de autenticación no tiene un proveedor de correo conectado, o que se llegó al
+            // límite de 2 correos/hora del servidor de pruebas por defecto (ver docs/13, sección 2.2:
+            // Project Settings -> Auth -> SMTP Settings). No es algo que quien invita pueda resolver.
+            throw new BusinessRuleException("No se pudo enviar el correo de invitación en este momento. Avísale al equipo técnico si sigue fallando.");
         }
     }
 
@@ -91,7 +101,7 @@ public class SupabaseAuthAdminService(IConfiguration configuration, ILogger<Supa
         var projectUrl = configuration["Supabase:ProjectUrl"];
         var serviceRoleKey = configuration["Supabase:ServiceRoleKey"];
         if (string.IsNullOrWhiteSpace(projectUrl) || string.IsNullOrWhiteSpace(serviceRoleKey))
-            throw new BusinessRuleException("No se pudo crear la cuenta: falta configurar Supabase:ProjectUrl y Supabase:ServiceRoleKey en el backend (las mismas claves que usa invitar, ver docs/17).");
+            throw new BusinessRuleException("No se pudo crear la cuenta: el alta de cuentas todavía no está configurada. Avísale al equipo técnico (falta Supabase:ProjectUrl y Supabase:ServiceRoleKey, las mismas claves que usa invitar, ver docs/17).");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{projectUrl.TrimEnd('/')}/auth/v1/admin/users");
         request.Headers.Add("apikey", serviceRoleKey);
@@ -108,7 +118,7 @@ public class SupabaseAuthAdminService(IConfiguration configuration, ILogger<Supa
         catch (Exception ex)
         {
             logger.LogError(ex, "Error de red al crear la cuenta de {Email} en Supabase Auth.", email);
-            throw new BusinessRuleException("No se pudo contactar a Supabase para crear la cuenta. Intenta de nuevo en un momento.");
+            throw new BusinessRuleException("No se pudo crear la cuenta. Intenta de nuevo en un momento.");
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -116,8 +126,8 @@ public class SupabaseAuthAdminService(IConfiguration configuration, ILogger<Supa
         {
             logger.LogError("Supabase Auth respondió {StatusCode} al crear la cuenta de {Email}: {Body}", response.StatusCode, email, body);
             if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
-                throw new BusinessRuleException("Ese correo ya tiene una cuenta en Supabase Auth. Si ya es parte del equipo, búscalo en la lista en vez de registrarlo otra vez.");
-            throw new BusinessRuleException("Supabase no pudo crear la cuenta. Intenta de nuevo o revisa el log del backend.");
+                throw new BusinessRuleException("Ese correo ya tiene una cuenta. Si ya es parte del equipo, búscalo en la lista en vez de registrarlo otra vez.");
+            throw new BusinessRuleException("No se pudo crear la cuenta en este momento. Avísale al equipo técnico si sigue fallando.");
         }
 
         // La respuesta trae el usuario recién creado; su "id" es el UUID que necesita usuarios.id.
@@ -125,7 +135,7 @@ public class SupabaseAuthAdminService(IConfiguration configuration, ILogger<Supa
         if (!documento.RootElement.TryGetProperty("id", out var id) || !Guid.TryParse(id.GetString(), out var usuarioId))
         {
             logger.LogError("Supabase Auth creó la cuenta de {Email} pero la respuesta no traía un id utilizable: {Body}", email, body);
-            throw new BusinessRuleException("Supabase creó la cuenta pero no devolvió su identificador. Revisa el log del backend antes de reintentar, para no crear una cuenta duplicada.");
+            throw new BusinessRuleException("La cuenta se creó pero no se pudo confirmar. No la vuelvas a crear -- avísale al equipo técnico antes de reintentar, para no dejar una cuenta duplicada.");
         }
         return usuarioId;
     }

@@ -21,10 +21,14 @@ public class CrearProyectoValidator : AbstractValidator<CrearProyectoDto>
         RuleFor(x => x.EstadoBrief).Must(x => Briefs.Contains(x)).WithMessage("El estado del brief no es válido.");
         RuleFor(x => x.PropuestaEstado).Must(x => Propuestas.Contains(x)).WithMessage("El estado de la propuesta no es válido.");
         RuleFor(x => x.FechaPago).NotNull().When(x => x.Pagado).WithMessage("La fecha de pago es requerida cuando el proyecto está pagado.");
+        // Rol pasó a ser opcional (Alicia 2026-09-09): agregar a alguien al equipo ahora es buscar su
+        // nombre entre los usuarios con rol miembro/manager y agregarlo, sin elegir un rol funcional --
+        // este "Rol" (Ejecutivo/Comercial/Diseñador...) queda vacío para lo nuevo y solo se conserva
+        // para no perder lo que ya tenían proyectos guardados antes de este cambio.
         RuleForEach(x => x.Equipo).ChildRules(equipo =>
         {
             equipo.RuleFor(x => x.Nombre).NotEmpty().MaximumLength(255);
-            equipo.RuleFor(x => x.Rol).Must(x => Roles.Contains(x)).WithMessage("El rol del equipo no es válido.");
+            equipo.RuleFor(x => x.Rol).Must(x => string.IsNullOrWhiteSpace(x) || Roles.Contains(x)).WithMessage("El rol del equipo no es válido.");
         });
     }
 }

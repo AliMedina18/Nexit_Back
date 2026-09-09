@@ -1,5 +1,8 @@
 using Nexit.Application.DTOs.Clientes;
 using Nexit.Application.UseCases.Historial;
+using Nexit.Application.UseCases.Notificaciones;
+using Nexit.Application.UseCases.SolicitudesEliminacion;
+using Nexit.Core.Constants;
 using Nexit.Core.Entities;
 using Nexit.Core.Exceptions;
 using Nexit.Core.Interfaces;
@@ -108,14 +111,27 @@ internal static class ClienteMapper
     };
 }
 
-public class EliminarClienteUseCase(IClienteRepository repository, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : IEliminarClienteUseCase
+public class EliminarClienteUseCase(
+    IClienteRepository repository, IHistorialCambioRepository historial,
+    IUsuarioRepository usuarios, INotificacionRepository notificaciones, IUnitOfWork unitOfWork) : IEliminarClienteUseCase
 {
-    public async Task ExecuteAsync(Guid id, Guid usuarioId, CancellationToken cancellationToken = default)
+    public async Task ExecuteAsync(Guid id, Guid usuarioId, string? rol, CancellationToken cancellationToken = default)
     {
         if (await repository.GetByIdAsync(id, cancellationToken) is null) throw new EntityNotFoundException("Cliente", id);
         await repository.DeleteAsync(id, cancellationToken);
         await HistorialRegistrador.RegistrarEliminacionAsync(historial, "cliente", id, usuarioId, cancellationToken);
+        // Un director elimina directo (DirectorOrAbove, ClientesController.Delete) -- a diferencia
+        // de admin/super_admin, al administrador le llega aviso de que pasó (Alicia 2026-09-09).
+        if (rol == Roles.Manager) await NotificarAdministradoresAsync(usuarios, notificaciones, usuarioId, "cliente", id, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    internal static async Task NotificarAdministradoresAsync(IUsuarioRepository usuarios, INotificacionRepository notificaciones, Guid directorId, string tipoEntidad, Guid entidadId, CancellationToken ct)
+    {
+        var director = await usuarios.GetByIdAsync(directorId, ct);
+        var nombreDirector = director is null ? "Un director" : $"{director.Nombre} {director.Apellido}".Trim();
+        foreach (var adminId in await SolicitarEliminacionUseCase.IdsAdministradoresAsync(usuarios, ct))
+            await notificaciones.AddAsync(NotificacionFactory.EliminacionDirectaDirector(adminId, tipoEntidad, entidadId, nombreDirector), ct);
     }
 }
 

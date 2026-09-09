@@ -34,9 +34,10 @@ public class AceptarInvitacionValidator : AbstractValidator<AceptarInvitacionDto
 }
 
 /// <summary>
-/// Solo valida la FORMA del lote (que venga al menos un correo y no una lista desmedida). Cada
-/// correo se valida uno por uno con <see cref="CrearInvitacionValidator"/> dentro del caso de uso,
-/// para poder devolver el motivo exacto por correo en vez de un único error para todo el envío.
+/// Solo valida la FORMA del lote (que venga al menos un correo, no una lista desmedida, y que cada
+/// rol sea uno asignable). Cada correo se valida uno por uno con <see cref="CrearInvitacionValidator"/>
+/// dentro del caso de uso, para poder devolver el motivo exacto por correo en vez de un único error
+/// para todo el envío.
 /// </summary>
 public class CrearInvitacionesLoteValidator : AbstractValidator<CrearInvitacionesLoteDto>
 {
@@ -45,11 +46,12 @@ public class CrearInvitacionesLoteValidator : AbstractValidator<CrearInvitacione
 
     public CrearInvitacionesLoteValidator()
     {
-        RuleFor(x => x.Emails).NotEmpty().WithMessage("Escribe al menos un correo para invitar.");
-        RuleFor(x => x.Emails).Must(x => x.Count <= MaximoPorLote)
+        RuleFor(x => x.Destinatarios).NotEmpty().WithMessage("Escribe al menos un correo para invitar.");
+        RuleFor(x => x.Destinatarios).Must(x => x.Count <= MaximoPorLote)
             .WithMessage($"Puedes invitar hasta {MaximoPorLote} correos por envío.");
-        RuleFor(x => x.Rol).Must(rol => Roles.Asignables.Contains(rol))
-            .WithMessage($"El rol debe ser uno de: {string.Join(", ", Roles.Asignables)}. No se puede invitar a nadie como super administrador.");
+        RuleForEach(x => x.Destinatarios)
+            .ChildRules(d => d.RuleFor(x => x.Rol).Must(rol => Roles.Asignables.Contains(rol))
+                .WithMessage($"El rol debe ser uno de: {string.Join(", ", Roles.Asignables)}. No se puede invitar a nadie como super administrador."));
         RuleFor(x => x.Mensaje).MaximumLength(500);
     }
 }

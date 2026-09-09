@@ -1,6 +1,6 @@
 # El flujo completo del sistema, módulo por módulo — guía para el frontend
 
-Este documento retoma la pregunta original de la usuaria completa: no solo correos/login, sino **todo el recorrido de alguien usando el sistema** — desde que entra, hasta cada CRUD (clientes, proveedores, proyectos, calendario, catálogos, informes, usuarios, solicitudes de eliminación) — con el detalle exacto de campos, reglas y permisos que ya están construidos en el backend, para que el frontend (otro repositorio) se pueda construir sobre esto sin adivinar.
+Este documento retoma la pregunta original de la usuaria completa: no solo correos/login, sino **todo el recorrido de alguien usando el sistema** — desde que entra, hasta cada CRUD (clientes, proveedores, proyectos, catálogos, informes, usuarios, solicitudes de eliminación) — con el detalle exacto de campos, reglas y permisos que ya están construidos en el backend, para que el frontend (otro repositorio) se pueda construir sobre esto sin adivinar.
 
 ## 0. Punto de entrada: iniciar sesión
 
@@ -14,7 +14,7 @@ Ya está documentado a fondo en `docs/10-correos-autenticacion-y-guia-frontend.m
 |---|---|---|
 | `super_admin` | Todo, incluida la *gestión* (crear/editar/desactivar/eliminar) de la tabla `usuarios` | — |
 | `admin` | Todo lo de `manager`/`miembro`, más ver (no gestionar) el directorio completo de `usuarios`; administra catálogos; decide (aprueba/rechaza) solicitudes de eliminación de clientes/proveedores/proyectos; elimina directamente catálogos y adjuntos | Crear, editar o eliminar usuarios |
-| `manager` (gerente) | Crear/ver/editar clientes, proveedores, proyectos; puede ser el "dueño" (`GerenteId`) de uno o más proyectos, y si lo es, endosa o rechaza solicitudes de eliminación de esos proyectos; ver el perfil individual (solo lectura) de cualquier compañero | Eliminar directamente clientes/proveedores/proyectos (pasa por solicitud); gestionar usuarios ni catálogos; ver el directorio completo de usuarios |
+| `manager` (director) | Crear/ver/editar clientes, proveedores, proyectos; puede ser el "dueño" (`GerenteId`) de uno o más proyectos, y si lo es, endosa o rechaza solicitudes de eliminación de esos proyectos; ver el perfil individual (solo lectura) de cualquier compañero | Eliminar directamente clientes/proveedores/proyectos (pasa por solicitud); gestionar usuarios ni catálogos; ver el directorio completo de usuarios |
 | `miembro` | Crear/ver/editar clientes, proveedores, proyectos; ver el perfil individual (solo lectura) de cualquier compañero | Eliminar directamente nada de eso (pasa por solicitud); gestionar usuarios ni catálogos; ver el directorio completo de usuarios |
 
 Dos políticas de autorización cubren todo esto en el código: `SuperAdminOnly` (crear/editar/eliminar en `usuarios` -- ver sección 8) y `AdminOrAbove` (`admin` o `super_admin`, para catálogos, informes, eliminación directa, y listar el directorio completo de `usuarios`). Todo lo demás solo exige estar autenticado, sin importar el rol -- incluido ver el perfil individual de cualquier persona en `usuarios` (sección 8).
@@ -63,7 +63,7 @@ Cada proveedor puede tener adjuntos de dos tipos: `link` (una URL — debe ser `
 | Agregar una nota de seguimiento | `POST /api/proyectos/{id}/seguimiento` | Cualquier autenticado |
 | Ver la bitácora completa de seguimiento | `GET /api/proyectos/{id}/seguimiento` | Cualquier autenticado |
 
-**Campos:** `nombre` (obligatorio), `clienteId` (opcional, debe existir), `contactoProyecto`, `tipoProyecto` (opcional: `Corporativo` / `Evento social`), `prioridad` (opcional: `Alta` / `Media` / `Baja`), `ciudad` (texto libre, no ligado a catálogo), `sedeNext` (sede de Next que atiende), `fechaSolicitud`, `fechaEvento` (esta es la fecha que usa el calendario, sección 5), `estadoId` (obligatorio, catálogo de estados — ver sección 6), `porcentajeAvance` (0-100), `estadoBrief` (uno de `Pendiente por enviar` / `Entregado, a espera de respuesta` / `Requiere ajustes` / `Aprobado`, default `Pendiente por enviar`), `propuestaEstado` (uno de `No enviada` / `En proceso` / `Enviada`, default `No enviada`), `numeroFactura`, `pagado` (booleano — si es `true`, `fechaPago` pasa a ser obligatoria), `fechaPago`, `notas`, `gerenteId` (ver abajo), `equipo` (lista de `{id?, rol, nombre}` — `rol` debe ser uno de `Ejecutivo` / `Comercial` / `Administrativo` / `Diseñador 3D` / `Diseñador gráfico`; `nombre` aquí es texto libre, **no** un `usuarioId` — a propósito, porque no todo responsable de un proyecto tiene cuenta en el sistema), y `proveedorIds` (lista de IDs de proveedores asociados al proyecto).
+**Campos:** `nombre` (obligatorio), `clienteId` (opcional, debe existir), `contactoProyecto`, `tipoProyecto` (opcional: `Corporativo` / `Evento social`), `prioridad` (opcional: `Alta` / `Media` / `Baja`), `ciudad` (texto libre, no ligado a catálogo), `sedeNext` (sede de Next que atiende), `fechaSolicitud`, `fechaEvento`, `estadoId` (obligatorio, catálogo de estados — ver sección 6), `porcentajeAvance` (0-100), `estadoBrief` (uno de `Pendiente por enviar` / `Entregado, a espera de respuesta` / `Requiere ajustes` / `Aprobado`, default `Pendiente por enviar`), `propuestaEstado` (uno de `No enviada` / `En proceso` / `Enviada`, default `No enviada`), `numeroFactura`, `pagado` (booleano — si es `true`, `fechaPago` pasa a ser obligatoria), `fechaPago`, `notas`, `gerenteId` (ver abajo), `equipo` (lista de `{id?, rol, nombre}` — `rol` debe ser uno de `Ejecutivo` / `Comercial` / `Administrativo` / `Diseñador 3D` / `Diseñador gráfico`; `nombre` aquí es texto libre, **no** un `usuarioId` — a propósito, porque no todo responsable de un proyecto tiene cuenta en el sistema), y `proveedorIds` (lista de IDs de proveedores asociados al proyecto).
 
 **El campo `gerenteId` tiene una regla especial que el frontend necesita conocer:**
 - Al **crear** un proyecto: si quien lo crea ya es `manager` y no mandó `gerenteId`, el backend lo asigna automáticamente a sí mismo como dueño. Si quien crea es `admin`/`super_admin`, puede mandar cualquier `gerenteId` (o dejarlo vacío). Si quien crea es `miembro`, el proyecto queda sin gerente sin importar lo que mande.
@@ -75,17 +75,16 @@ Igual que en clientes/proveedores, `equipo` y `proveedorIds` se **reemplazan por
 
 `POST /api/proyectos/{id}/seguimiento` agrega una nota (no reemplaza nada, esta sí es un historial que crece — a diferencia de teléfonos/equipo). Campos: `area` (uno de `General` / `Creativo` / `Comercial` / `Administrativo`), `fecha` (opcional, default ahora), `nota` (obligatoria). Queda registrado quién la escribió (`autorId`, el usuario autenticado) y cuándo. No hay endpoint para editar ni borrar una nota de seguimiento ya creada — es un historial de solo-agregar. `GET /api/proyectos/{id}/seguimiento` (agregado 2026-08-26) devuelve esa bitácora completa, más reciente primero — antes solo existía el POST, sin forma de listarla.
 
-## 5. Calendario de proyectos — `/api/calendario`
+## 5. Calendario de proyectos — **eliminado (2026-09-09)**
 
-Cualquier autenticado, sin restricción de rol. Pensado para ser liviano: 3 endpoints separados en vez de uno que traiga todo.
+Esta sección describía `/api/calendario`. Ese módulo se sacó por completo del sistema — ver
+[`41-eliminacion-del-calendario.md`](41-eliminacion-del-calendario.md). No hay endpoints de
+calendario ni pantalla de calendario.
 
-`GET /api/calendario/anios` — lista los años que tienen al menos un proyecto con `fechaEvento` (para poblar el selector de año, sin inventar un rango fijo).
+`fechaEvento` sigue siendo un campo normal del proyecto (sección 4): se captura, se muestra y se
+exporta igual que antes.
 
-`GET /api/calendario/{anio}` — resumen de un año: siempre trae los 12 meses (enero a diciembre) con la cantidad de proyectos de cada uno, aunque algunos meses tengan 0 — así el frontend pinta la grilla completa sin huecos que adivinar. Es solo un conteo (`GROUP BY`), no trae los proyectos.
-
-`GET /api/calendario/{anio}/{mes}` — la lista de proyectos de ese mes específico (una versión liviana: id, nombre, fecha, cliente, estado, prioridad, ciudad, sede — sin equipo/proveedores/seguimiento). Se pide solo cuando alguien entra a ver ese mes.
-
-**El campo que ubica un proyecto en el calendario es `fechaEvento`, no `fechaSolicitud`.**
+La numeración de secciones se mantiene para no romper los enlaces que apuntan a las siguientes.
 
 ## 6. Catálogos — `/api/catalogos`
 
@@ -180,6 +179,6 @@ que mandar a la pantalla de registro con el primer código y cerrar la sesión c
 
 - `docs/10-correos-autenticacion-y-guia-frontend.md` — login, correos, qué falta ahí.
 - `docs/06-modelo-permisos-roles.md` — la matriz de permisos y el flujo de solicitudes de eliminación con más contexto de diseño.
-- `docs/07-calendario-e-informes-excel.md` — el calendario y los informes con más detalle de implementación.
+- `docs/07-calendario-e-informes-excel.md` — los informes con más detalle de implementación (la parte de calendario ya no aplica, ver `docs/41`).
 - `docs/schema/01_esquema_completo.sql` — el esquema real (de aquí salen los valores fijos de los `CHECK` como estados de proveedor, presupuesto, cobertura, etc., listados arriba).
 - Controllers en `src/Nexit.API/Controllers/` — la fuente de verdad de cada ruta exacta.

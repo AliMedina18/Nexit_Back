@@ -22,14 +22,24 @@ public class InvitacionesTests
     {
         var repo = new Mock<IInvitacionEquipoRepository>();
         var authAdmin = new Mock<ISupabaseAuthAdminService>();
+        var usuarios = new Mock<IUsuarioRepository>();
+        usuarios.Setup(x => x.GetByIdAsync(AdminId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Usuario { Id = AdminId, Nombre = "Ana", Apellido = "Admin", Email = "ana@agencianextmkt.com", Rol = Roles.Admin });
         var uow = new Mock<IUnitOfWork>();
         var dto = new CrearInvitacionDto { Email = "nueva@agencianextmkt.com", Rol = "miembro", Mensaje = "bienvenida" };
 
-        var result = await new CrearInvitacionUseCase(repo.Object, authAdmin.Object, uow.Object).ExecuteAsync(dto, AdminId);
+        var result = await new CrearInvitacionUseCase(repo.Object, usuarios.Object, authAdmin.Object, uow.Object).ExecuteAsync(dto, AdminId);
 
-        authAdmin.Verify(x => x.InvitarUsuarioAsync("nueva@agencianextmkt.com", It.IsAny<CancellationToken>()), Times.Once);
+        // El correo (docs/42) recibe quién invitó, el rol con etiqueta y el mensaje -- no solo el email.
+        authAdmin.Verify(
+            x => x.InvitarUsuarioAsync(
+                "nueva@agencianextmkt.com",
+                It.Is<IReadOnlyDictionary<string, string>>(d => d["rol"] == "Miembro" && d["invitadoPor"] == "Ana Admin" && d["mensaje"] == "bienvenida"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
         repo.Verify(x => x.AddAsync(It.Is<InvitacionEquipo>(i => i.Estado == EstadosInvitacion.Pendiente && i.InvitadoPorId == AdminId), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(EstadosInvitacion.Pendiente, result.Estado);
+        Assert.Equal("Ana Admin", result.InvitadoPorNombre);
     }
 
     [Fact]
@@ -37,12 +47,13 @@ public class InvitacionesTests
     {
         var repo = new Mock<IInvitacionEquipoRepository>();
         var authAdmin = new Mock<ISupabaseAuthAdminService>();
-        authAdmin.Setup(x => x.InvitarUsuarioAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        authAdmin.Setup(x => x.InvitarUsuarioAsync(It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new BusinessRuleException("no configurado"));
+        var usuarios = new Mock<IUsuarioRepository>();
         var uow = new Mock<IUnitOfWork>();
         var dto = new CrearInvitacionDto { Email = "nueva@agencianextmkt.com", Rol = "miembro" };
 
-        await Assert.ThrowsAsync<BusinessRuleException>(() => new CrearInvitacionUseCase(repo.Object, authAdmin.Object, uow.Object).ExecuteAsync(dto, AdminId));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => new CrearInvitacionUseCase(repo.Object, usuarios.Object, authAdmin.Object, uow.Object).ExecuteAsync(dto, AdminId));
 
         repo.Verify(x => x.AddAsync(It.IsAny<InvitacionEquipo>(), It.IsAny<CancellationToken>()), Times.Never);
         uow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -220,8 +231,11 @@ public class InvitacionesTests
         var crear = CrearQueDevuelveLaInvitacion();
         var dto = new CrearInvitacionesLoteDto
         {
-            Emails = ["una@agencianextmkt.com", "otra@agencianextmkt.com"],
-            Rol = "manager",
+            Destinatarios =
+            [
+                new InvitacionLoteDestinatarioDto { Email = "una@agencianextmkt.com", Rol = "manager" },
+                new InvitacionLoteDestinatarioDto { Email = "otra@agencianextmkt.com", Rol = "manager" },
+            ],
             Mensaje = "bienvenidas"
         };
 
@@ -238,8 +252,12 @@ public class InvitacionesTests
         var crear = CrearQueDevuelveLaInvitacion();
         var dto = new CrearInvitacionesLoteDto
         {
-            Emails = ["buena@agencianextmkt.com", "mala@otro-dominio.com", "otra@agencianextmkt.com"],
-            Rol = "miembro"
+            Destinatarios =
+            [
+                new InvitacionLoteDestinatarioDto { Email = "buena@agencianextmkt.com", Rol = "miembro" },
+                new InvitacionLoteDestinatarioDto { Email = "mala@otro-dominio.com", Rol = "miembro" },
+                new InvitacionLoteDestinatarioDto { Email = "otra@agencianextmkt.com", Rol = "miembro" },
+            ]
         };
 
         var resultado = await LoteConValidador(crear, ValidadorQueAcepta("mala@otro-dominio.com")).ExecuteAsync(dto, AdminId);
@@ -259,8 +277,11 @@ public class InvitacionesTests
             .ThrowsAsync(new BusinessRuleException("Ese correo ya tiene una cuenta en Supabase Auth."));
         var dto = new CrearInvitacionesLoteDto
         {
-            Emails = ["buena@agencianextmkt.com", "repetida@agencianextmkt.com"],
-            Rol = "miembro"
+            Destinatarios =
+            [
+                new InvitacionLoteDestinatarioDto { Email = "buena@agencianextmkt.com", Rol = "miembro" },
+                new InvitacionLoteDestinatarioDto { Email = "repetida@agencianextmkt.com", Rol = "miembro" },
+            ]
         };
 
         var resultado = await LoteConValidador(crear, ValidadorQueAcepta()).ExecuteAsync(dto, AdminId);
@@ -273,13 +294,45 @@ public class InvitacionesTests
     }
 
     [Fact]
+    public async Task CrearInvitacionesLote_permite_un_rol_distinto_por_destinatario()
+    {
+        var crear = CrearQueDevuelveLaInvitacion();
+        var dto = new CrearInvitacionesLoteDto
+        {
+            Destinatarios =
+            [
+                new InvitacionLoteDestinatarioDto { Email = "miembro1@agencianextmkt.com", Rol = "miembro" },
+                new InvitacionLoteDestinatarioDto { Email = "miembro2@agencianextmkt.com", Rol = "miembro" },
+                new InvitacionLoteDestinatarioDto { Email = "admin@agencianextmkt.com", Rol = "admin" },
+                new InvitacionLoteDestinatarioDto { Email = "directora@agencianextmkt.com", Rol = "manager" },
+            ],
+            Mensaje = "bienvenida"
+        };
+
+        var resultado = await LoteConValidador(crear, ValidadorQueAcepta()).ExecuteAsync(dto, AdminId);
+
+        Assert.Equal(4, resultado.Enviadas.Count);
+        Assert.Empty(resultado.Fallidas);
+        Assert.Equal("miembro", resultado.Enviadas.Single(i => i.Email == "miembro1@agencianextmkt.com").Rol);
+        Assert.Equal("miembro", resultado.Enviadas.Single(i => i.Email == "miembro2@agencianextmkt.com").Rol);
+        Assert.Equal("admin", resultado.Enviadas.Single(i => i.Email == "admin@agencianextmkt.com").Rol);
+        Assert.Equal("manager", resultado.Enviadas.Single(i => i.Email == "directora@agencianextmkt.com").Rol);
+        crear.Verify(x => x.ExecuteAsync(It.Is<CrearInvitacionDto>(d => d.Email == "admin@agencianextmkt.com" && d.Rol == "admin" && d.Mensaje == "bienvenida"), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CrearInvitacionesLote_ignora_repetidos_y_espacios_del_mismo_envio()
     {
         var crear = CrearQueDevuelveLaInvitacion();
         var dto = new CrearInvitacionesLoteDto
         {
-            Emails = ["  una@agencianextmkt.com ", "UNA@agencianextmkt.com", "", "   "],
-            Rol = "miembro"
+            Destinatarios =
+            [
+                new InvitacionLoteDestinatarioDto { Email = "  una@agencianextmkt.com ", Rol = "miembro" },
+                new InvitacionLoteDestinatarioDto { Email = "UNA@agencianextmkt.com", Rol = "miembro" },
+                new InvitacionLoteDestinatarioDto { Email = "", Rol = "miembro" },
+                new InvitacionLoteDestinatarioDto { Email = "   ", Rol = "miembro" },
+            ]
         };
 
         var resultado = await LoteConValidador(crear, ValidadorQueAcepta()).ExecuteAsync(dto, AdminId);

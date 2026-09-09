@@ -1,5 +1,14 @@
 # Nexit · Calendario de proyectos, restricción de informes y exportación a Excel
 
+> ⚠️ **La mitad de este documento ya no aplica (2026-09-09).** El **calendario de proyectos se
+> eliminó por completo** del sistema — Alicia lo descartó por ser un extra fuera del alcance real.
+> Ver [`41-eliminacion-del-calendario.md`](41-eliminacion-del-calendario.md).
+>
+> Lo que **sigue vigente** de aquí: la restricción de Informes a `super_admin`/`admin`, y la
+> exportación a Excel con ClosedXML (incluido por qué se descartó EPPlus). Todo lo que hable del
+> `CalendarioController`, de `ObtenerConteoPorMesAsync`/`ObtenerPorMesAsync` o de la vista de
+> calendario es historia: ese código ya no existe.
+
 **Proyecto:** Sistema de gestión de la información para la organización de proyectos de trabajo
 **Nombre del sistema:** Nexus (nombre de trabajo, sujeto a cambio)
 **Cliente/organización:** Next — agencia de marketing experiencial

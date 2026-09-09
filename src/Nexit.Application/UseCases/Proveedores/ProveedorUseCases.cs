@@ -1,5 +1,7 @@
 using Nexit.Application.DTOs.Proveedores;
+using Nexit.Application.UseCases.Clientes;
 using Nexit.Application.UseCases.Historial;
+using Nexit.Core.Constants;
 using Nexit.Core.Entities;
 using Nexit.Core.Exceptions;
 using Nexit.Core.Interfaces;
@@ -41,13 +43,18 @@ public class ConsultarProveedoresUseCase(IProveedorRepository repository) : ICon
     public async Task<ProveedorResponseDto> GetByIdAsync(Guid id, CancellationToken ct = default) => ProveedorMapper.ToResponse(await repository.GetByIdAsync(id, ct) ?? throw new EntityNotFoundException("Proveedor", id));
 }
 
-public class EliminarProveedorUseCase(IProveedorRepository repository, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : IEliminarProveedorUseCase
+public class EliminarProveedorUseCase(
+    IProveedorRepository repository, IHistorialCambioRepository historial,
+    IUsuarioRepository usuarios, INotificacionRepository notificaciones, IUnitOfWork unitOfWork) : IEliminarProveedorUseCase
 {
-    public async Task ExecuteAsync(Guid id, Guid usuarioId, CancellationToken ct = default)
+    public async Task ExecuteAsync(Guid id, Guid usuarioId, string? rol, CancellationToken ct = default)
     {
         if (await repository.GetByIdAsync(id, ct) is null) throw new EntityNotFoundException("Proveedor", id);
         await repository.DeleteAsync(id, ct);
         await HistorialRegistrador.RegistrarEliminacionAsync(historial, "proveedor", id, usuarioId, ct);
+        // Un director elimina directo (DirectorOrAbove, ProveedoresController.Delete) -- a diferencia
+        // de admin/super_admin, al administrador le llega aviso de que pasó (Alicia 2026-09-09).
+        if (rol == Roles.Manager) await EliminarClienteUseCase.NotificarAdministradoresAsync(usuarios, notificaciones, usuarioId, "proveedor", id, ct);
         await unitOfWork.SaveChangesAsync(ct);
     }
 }

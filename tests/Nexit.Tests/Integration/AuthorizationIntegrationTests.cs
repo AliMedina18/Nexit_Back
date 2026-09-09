@@ -39,30 +39,34 @@ public class AuthorizationIntegrationTests(NexitApiFactory factory) : IClassFixt
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Theory]
-    [InlineData("miembro")]
-    [InlineData("manager")]
-    public async Task DeleteCliente_with_a_non_admin_role_returns_403(string role)
+    [Fact]
+    public async Task DeleteCliente_with_miembro_role_returns_403()
     {
         _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
-        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, role);
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, "miembro");
 
         var response = await _client.DeleteAsync($"/api/clientes/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
-    public async Task DeleteCliente_with_admin_role_passes_authorization()
+    // Director (manager) elimina directo desde 2026-09-09 (Alicia: "los directores sí podrían
+    // borrar proyectos... claramente se recibe la notificación al administrador") -- ya no pasa
+    // por SolicitudesEliminacionController como miembro. Ver DirectorOrAbove en Program.cs.
+    [Theory]
+    [InlineData("manager")]
+    [InlineData("admin")]
+    [InlineData("super_admin")]
+    public async Task DeleteCliente_with_director_or_above_role_passes_authorization(string role)
     {
         _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
-        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, "admin");
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, role);
 
         var response = await _client.DeleteAsync($"/api/clientes/{Guid.NewGuid()}");
 
         // No hay base de datos real en el entorno de pruebas, así que la petición puede fallar más
         // adelante en el pipeline (p. ej. 500 al no poder conectar a Postgres) — lo que importa aquí
-        // es que la autorización ya no la bloquea (nunca 401/403), a diferencia de "miembro"/"manager".
+        // es que la autorización ya no la bloquea (nunca 401/403), a diferencia de "miembro".
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -114,6 +118,35 @@ public class AuthorizationIntegrationTests(NexitApiFactory factory) : IClassFixt
         _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, role);
 
         var response = await _client.GetAsync("/api/usuarios");
+
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    // Crear/editar usuarios pasó de SuperAdminOnly a AdminOrAbove (Alicia 2026-09-09: varias
+    // administradoras van a manejar usuarios ellas mismas).
+    [Theory]
+    [InlineData("miembro")]
+    [InlineData("manager")]
+    public async Task CrearUsuario_with_manager_or_miembro_returns_403(string role)
+    {
+        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, role);
+
+        var response = await _client.PostAsJsonAsync("/api/usuarios", new { id = Guid.NewGuid(), nombre = "X", apellido = "Y", email = "x@k11technologies.com", rol = "miembro" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("admin")]
+    [InlineData("super_admin")]
+    public async Task CrearUsuario_with_admin_or_super_admin_role_passes_authorization(string role)
+    {
+        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
+        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, role);
+
+        var response = await _client.PostAsJsonAsync("/api/usuarios", new { id = Guid.NewGuid(), nombre = "X", apellido = "Y", email = "x@k11technologies.com", rol = "miembro" });
 
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
@@ -234,29 +267,6 @@ public class AuthorizationIntegrationTests(NexitApiFactory factory) : IClassFixt
     public async Task GetInformesResumen_without_a_token_returns_401()
     {
         var response = await _client.GetAsync("/api/informes/resumen");
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    // Calendario de proyectos — a diferencia de Informes, cualquier autenticado puede verlo (igual
-    // que la lista normal de proyectos).
-    [Theory]
-    [InlineData("miembro")]
-    [InlineData("manager")]
-    public async Task GetCalendarioAnio_with_any_authenticated_role_is_not_blocked_by_authorization(string role)
-    {
-        _client.DefaultRequestHeaders.Remove(TestAuthHandler.TestAuthHeader);
-        _client.DefaultRequestHeaders.Add(TestAuthHandler.TestAuthHeader, role);
-
-        var response = await _client.GetAsync("/api/calendario/2026");
-
-        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task GetCalendarioAnio_without_a_token_returns_401()
-    {
-        var response = await _client.GetAsync("/api/calendario/2026");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 

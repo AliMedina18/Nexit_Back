@@ -1,5 +1,14 @@
 # Calendario: el mes de un proyecto se decide por la hora local de su sede, no por UTC
 
+> ⚠️ **Documento obsoleto (2026-09-09).** El calendario de proyectos se eliminó por completo del
+> sistema, y con él este arreglo y `SedeTimeZoneResolver`. Ver
+> [`41-eliminacion-del-calendario.md`](41-eliminacion-del-calendario.md).
+>
+> Se conserva porque el bug que describe (decidir el mes/año de un evento por UTC en vez de por la
+> hora local de su sede) vuelve a aparecer en cuanto algo agrupe proyectos por fecha — un informe
+> mensual, por ejemplo. Si eso llega a pasar, esta es la explicación y el código está en el historial
+> de Git.
+
 Revisando el backend del calendario (`docs/07`) contra cómo lo resuelven otros sistemas de calendario, encontré un riesgo real (no una rareza teórica) en cómo se calculaba a qué mes pertenece un proyecto, y lo corregí. Este documento explica el problema, la investigación que lo confirma, y cómo quedó.
 
 ## 1. El problema

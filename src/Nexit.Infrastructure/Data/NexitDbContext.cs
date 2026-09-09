@@ -236,6 +236,7 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
             entity.Property(x => x.TipoEntidad).HasMaxLength(20).IsRequired();
             entity.Property(x => x.Estado).HasMaxLength(20).HasDefaultValue("pendiente_admin");
+            entity.Property(x => x.EntidadNombre).HasMaxLength(255);
             entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
             entity.Ignore(x => x.UpdatedAt); entity.Ignore(x => x.CreatedBy); entity.Ignore(x => x.UpdatedBy);
             entity.HasIndex(x => new { x.TipoEntidad, x.EntidadId });

@@ -28,7 +28,7 @@ public class SolicitudesEliminacionTests
         var solicitanteId = Guid.NewGuid();
         proyectos.Setup(x => x.GetByIdAsync(proyectoId, It.IsAny<CancellationToken>())).ReturnsAsync(new Proyecto { Id = proyectoId, GerenteId = gerenteId });
 
-        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, proyectos.Object, Mock.Of<IUsuarioRepository>(), Mock.Of<INotificacionRepository>(), unitOfWork.Object)
+        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), proyectos.Object, Mock.Of<IUsuarioRepository>(), Mock.Of<INotificacionRepository>(), unitOfWork.Object)
             .ExecuteAsync(new CrearSolicitudEliminacionDto { TipoEntidad = "proyecto", EntidadId = proyectoId }, solicitanteId);
 
         Assert.Equal("pendiente_gerente", result.Estado);
@@ -46,7 +46,7 @@ public class SolicitudesEliminacionTests
         var proyectoId = Guid.NewGuid();
         proyectos.Setup(x => x.GetByIdAsync(proyectoId, It.IsAny<CancellationToken>())).ReturnsAsync(new Proyecto { Id = proyectoId, GerenteId = null });
 
-        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, proyectos.Object, usuarios.Object, Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
+        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), proyectos.Object, usuarios.Object, Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearSolicitudEliminacionDto { TipoEntidad = "proyecto", EntidadId = proyectoId }, Guid.NewGuid());
 
         Assert.Equal("pendiente_admin", result.Estado);
@@ -65,7 +65,7 @@ public class SolicitudesEliminacionTests
         var gerenteId = Guid.NewGuid();
         proyectos.Setup(x => x.GetByIdAsync(proyectoId, It.IsAny<CancellationToken>())).ReturnsAsync(new Proyecto { Id = proyectoId, GerenteId = gerenteId });
 
-        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, proyectos.Object, usuarios.Object, Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
+        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), proyectos.Object, usuarios.Object, Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearSolicitudEliminacionDto { TipoEntidad = "proyecto", EntidadId = proyectoId }, gerenteId);
 
         Assert.Equal("pendiente_admin", result.Estado);
@@ -80,11 +80,49 @@ public class SolicitudesEliminacionTests
         solicitudes.Setup(x => x.GetOtrasPendientesPorEntidadAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var usuarios = new Mock<IUsuarioRepository>();
         usuarios.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
-        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IProyectoRepository>(), usuarios.Object, Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
+        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), Mock.Of<IProyectoRepository>(), usuarios.Object, Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearSolicitudEliminacionDto { TipoEntidad = tipo, EntidadId = Guid.NewGuid() }, Guid.NewGuid());
 
         Assert.Equal("pendiente_admin", result.Estado);
         Assert.Null(result.GerenteResponsableId);
+    }
+
+    [Fact]
+    public async Task Solicitar_eliminar_guarda_una_fotografia_del_nombre_de_la_entidad()
+    {
+        // El nombre queda guardado en la solicitud misma (ver SolicitudEliminacion.EntidadNombre):
+        // así, aunque a la entidad la borren después, sigue siendo posible saber qué (o a quién) se
+        // pidió eliminar en vez de mostrar solo un id o un genérico "ya eliminado".
+        var solicitudes = new Mock<ISolicitudEliminacionRepository>();
+        solicitudes.Setup(x => x.GetOtrasPendientesPorEntidadAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var usuarios = new Mock<IUsuarioRepository>();
+        usuarios.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var clientes = new Mock<IClienteRepository>();
+        var clienteId = Guid.NewGuid();
+        clientes.Setup(x => x.GetByIdAsync(clienteId, It.IsAny<CancellationToken>())).ReturnsAsync(new Cliente { Id = clienteId, Nombre = "Agencia Next" });
+
+        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, clientes.Object, Mock.Of<IProveedorRepository>(), Mock.Of<IProyectoRepository>(), usuarios.Object, Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
+            .ExecuteAsync(new CrearSolicitudEliminacionDto { TipoEntidad = "cliente", EntidadId = clienteId }, Guid.NewGuid());
+
+        Assert.Equal("Agencia Next", result.EntidadNombre);
+    }
+
+    [Fact]
+    public async Task Solicitar_eliminar_usuario_guarda_su_nombre_y_apellido_como_fotografia()
+    {
+        var solicitudes = new Mock<ISolicitudEliminacionRepository>();
+        solicitudes.Setup(x => x.GetOtrasPendientesPorEntidadAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var usuarios = new Mock<IUsuarioRepository>();
+        var solicitanteId = Guid.NewGuid();
+        var objetivoId = Guid.NewGuid();
+        usuarios.Setup(x => x.GetByIdAsync(solicitanteId, It.IsAny<CancellationToken>())).ReturnsAsync(new Usuario { Id = solicitanteId, Rol = Roles.Admin });
+        usuarios.Setup(x => x.GetByIdAsync(objetivoId, It.IsAny<CancellationToken>())).ReturnsAsync(new Usuario { Id = objetivoId, Rol = Roles.Miembro, Nombre = "Juliana", Apellido = "Navarro" });
+        usuarios.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var result = await new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), Mock.Of<IProyectoRepository>(), usuarios.Object, Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
+            .ExecuteAsync(new CrearSolicitudEliminacionDto { TipoEntidad = "usuario", EntidadId = objetivoId }, solicitanteId);
+
+        Assert.Equal("Juliana Navarro", result.EntidadNombre);
     }
 
     [Fact]
@@ -94,7 +132,7 @@ public class SolicitudesEliminacionTests
         var proyectos = new Mock<IProyectoRepository>();
         proyectos.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Proyecto?)null);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(() => new SolicitarEliminacionUseCase(solicitudes.Object, proyectos.Object, Mock.Of<IUsuarioRepository>(), Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
+        await Assert.ThrowsAsync<EntityNotFoundException>(() => new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), proyectos.Object, Mock.Of<IUsuarioRepository>(), Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearSolicitudEliminacionDto { TipoEntidad = "proyecto", EntidadId = Guid.NewGuid() }, Guid.NewGuid()));
     }
 
@@ -272,7 +310,7 @@ public class SolicitudesEliminacionTests
         notificaciones.Setup(x => x.AddAsync(It.IsAny<Notificacion>(), It.IsAny<CancellationToken>()))
             .Callback<Notificacion, CancellationToken>((n, _) => enviada = n).Returns(Task.CompletedTask);
 
-        await new SolicitarEliminacionUseCase(solicitudes.Object, proyectos.Object, Mock.Of<IUsuarioRepository>(), notificaciones.Object, Mock.Of<IUnitOfWork>())
+        await new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), proyectos.Object, Mock.Of<IUsuarioRepository>(), notificaciones.Object, Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearSolicitudEliminacionDto { TipoEntidad = "proyecto", EntidadId = proyectoId }, Guid.NewGuid());
 
         Assert.NotNull(enviada);
@@ -302,7 +340,7 @@ public class SolicitudesEliminacionTests
         notificaciones.Setup(x => x.AddAsync(It.IsAny<Notificacion>(), It.IsAny<CancellationToken>()))
             .Callback<Notificacion, CancellationToken>((n, _) => enviadas.Add(n)).Returns(Task.CompletedTask);
 
-        await new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IProyectoRepository>(), usuarios.Object, notificaciones.Object, Mock.Of<IUnitOfWork>())
+        await new SolicitarEliminacionUseCase(solicitudes.Object, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), Mock.Of<IProyectoRepository>(), usuarios.Object, notificaciones.Object, Mock.Of<IUnitOfWork>())
             .ExecuteAsync(new CrearSolicitudEliminacionDto { TipoEntidad = "proveedor", EntidadId = Guid.NewGuid() }, Guid.NewGuid());
 
         var enviada = Assert.Single(enviadas);
@@ -346,10 +384,31 @@ public class SolicitudesEliminacionTests
         solicitudes.Setup(x => x.GetPendientesParaGerenteAsync(gerenteId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new SolicitudEliminacion { TipoEntidad = "proyecto", EntidadId = Guid.NewGuid(), SolicitadoPorId = Guid.NewGuid(), Estado = "pendiente_gerente", GerenteResponsableId = gerenteId }]);
 
-        var result = await new ConsultarSolicitudesEliminacionUseCase(solicitudes.Object).ListPendientesParaGerenteAsync(gerenteId);
+        var result = await new ConsultarSolicitudesEliminacionUseCase(solicitudes.Object, Mock.Of<IUsuarioEliminadoRepository>()).ListPendientesParaGerenteAsync(gerenteId);
 
         Assert.Single(result);
         Assert.Equal(gerenteId, result[0].GerenteResponsableId);
+    }
+
+    [Fact]
+    public async Task ConsultarSolicitudes_completa_el_nombre_de_una_cuenta_desde_el_respaldo_cuando_la_solicitud_no_tenia_fotografia()
+    {
+        // Solicitudes de eliminar una cuenta creadas antes del 2026-09-09 (o cualquier caso donde,
+        // por lo que sea, EntidadNombre haya quedado vacío) siguen mostrando el nombre real -- viene
+        // del respaldo de `usuarios_eliminados` en vez de quedarse en blanco.
+        var solicitudes = new Mock<ISolicitudEliminacionRepository>();
+        var usuarioIdOriginal = Guid.NewGuid();
+        solicitudes.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(
+        [
+            new SolicitudEliminacion { TipoEntidad = "usuario", EntidadId = usuarioIdOriginal, Estado = "aprobada", SolicitadoPorId = Guid.NewGuid(), EntidadNombre = null },
+        ]);
+        var usuariosEliminados = new Mock<IUsuarioEliminadoRepository>();
+        usuariosEliminados.Setup(x => x.GetByUsuarioIdsOriginalAsync(It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(usuarioIdOriginal)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, UsuarioEliminado> { [usuarioIdOriginal] = new() { UsuarioIdOriginal = usuarioIdOriginal, Nombre = "Yuliana", Apellido = "Navarro" } });
+
+        var result = await new ConsultarSolicitudesEliminacionUseCase(solicitudes.Object, usuariosEliminados.Object).ListAsync();
+
+        Assert.Equal("Yuliana Navarro", Assert.Single(result).EntidadNombre);
     }
 
     // ---------------------------------------------------------------------
@@ -359,7 +418,7 @@ public class SolicitudesEliminacionTests
     /// <summary>Arma el caso de uso con lo mínimo, para no repetir nueve argumentos en cada test.</summary>
     private static SolicitarEliminacionUseCase Solicitador(
         ISolicitudEliminacionRepository solicitudes, IUsuarioRepository usuarios, INotificacionRepository? notificaciones = null) =>
-        new(solicitudes, Mock.Of<IProyectoRepository>(), usuarios, notificaciones ?? Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>());
+        new(solicitudes, Mock.Of<IClienteRepository>(), Mock.Of<IProveedorRepository>(), Mock.Of<IProyectoRepository>(), usuarios, notificaciones ?? Mock.Of<INotificacionRepository>(), Mock.Of<IUnitOfWork>());
 
     private static Mock<IUsuarioRepository> UsuariosCon(params Usuario[] usuarios)
     {

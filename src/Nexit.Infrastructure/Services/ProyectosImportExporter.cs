@@ -250,7 +250,7 @@ public class ProyectosImportExporter(
     // ClosedXML devuelve las fechas de Excel con Kind=Unspecified (Excel no guarda zona
     // horaria) -- Npgsql rechaza escribir eso en una columna "timestamp with time zone"
     // ("Cannot write DateTime with Kind=Unspecified... only UTC is supported"). Se marca
-    // como Utc explícitamente, igual que ya hace Nexit.Core.Utils.SedeTimeZoneResolver
+    // como Utc explícitamente
     // para este mismo problema -- no se le suma ni resta nada a la hora, solo se etiqueta.
     private static DateTime? FechaOpcional(IXLCell celda) =>
         celda.TryGetValue(out DateTime fecha) ? DateTime.SpecifyKind(fecha, DateTimeKind.Utc) : null;

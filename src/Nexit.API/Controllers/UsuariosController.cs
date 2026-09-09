@@ -10,18 +10,21 @@ namespace Nexit.API.Controllers;
 
 /// <summary>
 /// Gestión de cuentas de usuario. Tres niveles de acceso dentro del mismo controlador (actualizado
-/// 2026-08-26, ver docs/06-modelo-permisos-roles.md sección 6):
+/// 2026-09-09, ver docs/06-modelo-permisos-roles.md sección 6):
 ///
-///  - <b>Crear/editar</b> (<see cref="Create"/>, <see cref="Update"/>): exclusivo de
-///    <c>super_admin</c> (<c>SuperAdminOnly</c>). <b>Eliminar ya no vive acá</b>: pasa por
+///  - <b>Crear/editar</b> (<see cref="Create"/>, <see cref="Registrar"/>, <see cref="Update"/>):
+///    <c>admin</c> o <c>super_admin</c> (<c>AdminOrAbove</c>) -- Alicia 2026-09-09: van a haber
+///    varias administradoras que necesitan manejar usuarios ellas mismas, ya no exclusivo de
+///    super_admin. Ninguna de las dos puede darle a nadie el rol de super_admin (ver
+///    CrearUsuarioUseCase/ActualizarUsuarioUseCase -- un solo dueño del sistema, sembrado
+///    directamente en la base). <b>Eliminar ya no vive acá</b>: pasa por
 ///    SolicitudesEliminacionController (ver el comentario al final de esta clase).
-///  - <b>Listar a todos</b> (<see cref="GetAll"/>): ahora también <c>admin</c>, no solo
-///    <c>super_admin</c> (<c>AdminOrAbove</c>) -- la administradora operativa necesita ver el
-///    directorio completo, aunque no pueda tocarlo.
+///  - <b>Listar a todos</b> (<see cref="GetAll"/>): también <c>admin</c>, no solo
+///    <c>super_admin</c> (<c>AdminOrAbove</c>).
 ///  - <b>Ver un perfil individual</b> (<see cref="GetById"/>, <see cref="GetMe"/>): cualquier persona
 ///    autenticada, sin importar el rol -- solo lectura, como el directorio de personas de Microsoft
-///    Teams: cualquiera puede mirar el perfil de un compañero, pero editarlo/eliminarlo sigue siendo
-///    exclusivo de super_admin.
+///    Teams: cualquiera puede mirar el perfil de un compañero, pero editarlo/eliminarlo sigue
+///    exclusivo de admin/super_admin.
 ///
 /// Crear un usuario aquí solo registra su perfil de negocio; la cuenta de acceso (correo, contraseña)
 /// se invita primero desde Supabase Auth.
@@ -30,6 +33,7 @@ public class UsuariosController(
     ICrearUsuarioUseCase crear,
     IActualizarUsuarioUseCase actualizar,
     IConsultarUsuariosUseCase consultar,
+    IConsultarUsuariosEquipoUseCase consultarEquipo,
     IRegistrarUsuarioUseCase registrar,
     IUsuariosImportExporter importExporter,
     IValidator<CreateUsuarioDto> createValidator,
@@ -39,6 +43,16 @@ public class UsuariosController(
     /// <summary>Directorio completo -- admin/super_admin (ver el resumen de la clase).</summary>
     [HttpGet, Authorize(Policy = "AdminOrAbove")]
     public async Task<ActionResult<IReadOnlyList<UsuarioResponseDto>>> GetAll(CancellationToken ct) => Ok(await consultar.ListAsync(ct));
+
+    /// <summary>
+    /// Quiénes se pueden agregar al equipo de un proyecto -- solo activos con rol miembro o manager
+    /// (Director), nunca admin ni super_admin (Alicia 2026-09-09). A diferencia de <see cref="GetAll"/>,
+    /// CUALQUIER autenticado con perfil puede pedir esto: crear o editar un proyecto no es exclusivo de
+    /// admin+ (<see cref="Nexit.API.Controllers.ProyectosController"/> no restringe por rol), así que
+    /// buscar a quién agregar al equipo tampoco puede estarlo. Antes de "{id:guid}" a propósito.
+    /// </summary>
+    [HttpGet("equipo")]
+    public async Task<ActionResult<IReadOnlyList<UsuarioEquipoDto>>> GetEquipo(CancellationToken ct) => Ok(await consultarEquipo.ListAsync(ct));
 
     /// <summary>
     /// El equipo como .xlsx -- mismo permiso que ver el directorio (admin/super_admin). No hay un
@@ -75,7 +89,7 @@ public class UsuariosController(
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<UsuarioResponseDto>> GetById(Guid id, CancellationToken ct) => Ok(await consultar.GetByIdAsync(id, ct));
 
-    [HttpPost, Authorize(Policy = "SuperAdminOnly")]
+    [HttpPost, Authorize(Policy = "AdminOrAbove")]
     public async Task<ActionResult<UsuarioResponseDto>> Create(CreateUsuarioDto dto, CancellationToken ct)
     {
         var validation = await createValidator.ValidateAsync(dto, ct);
@@ -90,7 +104,7 @@ public class UsuariosController(
     /// invitar, no reemplazo -- invitar sigue siendo el camino cuando se prefiere que la propia
     /// persona complete sus datos.
     /// </summary>
-    [HttpPost("registrar"), Authorize(Policy = "SuperAdminOnly")]
+    [HttpPost("registrar"), Authorize(Policy = "AdminOrAbove")]
     public async Task<ActionResult<UsuarioResponseDto>> Registrar(RegistrarUsuarioDto dto, CancellationToken ct)
     {
         var validation = await registrarValidator.ValidateAsync(dto, ct);
@@ -99,7 +113,7 @@ public class UsuariosController(
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
-    [HttpPut("{id:guid}"), Authorize(Policy = "SuperAdminOnly")]
+    [HttpPut("{id:guid}"), Authorize(Policy = "AdminOrAbove")]
     public async Task<ActionResult<UsuarioResponseDto>> Update(Guid id, UpdateUsuarioDto dto, CancellationToken ct)
     {
         var validation = await updateValidator.ValidateAsync(dto, ct);

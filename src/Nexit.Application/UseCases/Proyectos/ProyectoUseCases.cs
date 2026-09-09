@@ -1,4 +1,5 @@
 using Nexit.Application.DTOs.Proyectos;
+using Nexit.Application.UseCases.Clientes;
 using Nexit.Application.UseCases.Historial;
 using Nexit.Core.Constants;
 using Nexit.Core.Entities;
@@ -82,13 +83,18 @@ public class ConsultarPrioridadProyectosUseCase(IProyectoRepository repository, 
     }
 }
 
-public class EliminarProyectoUseCase(IProyectoRepository repository, IHistorialCambioRepository historial, IUnitOfWork unitOfWork) : IEliminarProyectoUseCase
+public class EliminarProyectoUseCase(
+    IProyectoRepository repository, IHistorialCambioRepository historial,
+    IUsuarioRepository usuarios, INotificacionRepository notificaciones, IUnitOfWork unitOfWork) : IEliminarProyectoUseCase
 {
-    public async Task ExecuteAsync(Guid id, Guid usuarioId, CancellationToken ct = default)
+    public async Task ExecuteAsync(Guid id, Guid usuarioId, string? rol, CancellationToken ct = default)
     {
         if (await repository.GetByIdAsync(id, ct) is null) throw new EntityNotFoundException("Proyecto", id);
         await repository.DeleteAsync(id, ct);
         await HistorialRegistrador.RegistrarEliminacionAsync(historial, "proyecto", id, usuarioId, ct);
+        // Un director elimina directo (DirectorOrAbove, ProyectosController.Delete) -- a diferencia
+        // de admin/super_admin, al administrador le llega aviso de que pasó (Alicia 2026-09-09).
+        if (rol == Roles.Manager) await EliminarClienteUseCase.NotificarAdministradoresAsync(usuarios, notificaciones, usuarioId, "proyecto", id, ct);
         await unitOfWork.SaveChangesAsync(ct);
     }
 }

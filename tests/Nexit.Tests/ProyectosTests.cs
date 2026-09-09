@@ -1,6 +1,7 @@
 using Moq;
 using Nexit.Application.DTOs.Proyectos;
 using Nexit.Application.UseCases.Proyectos;
+using Nexit.Application.Validators.Proyectos;
 using Nexit.Core.Constants;
 using Nexit.Core.Entities;
 using Nexit.Core.Exceptions;
@@ -186,5 +187,44 @@ public class ProyectosTests
         proyectos.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Proyecto?)null);
 
         await Assert.ThrowsAsync<EntityNotFoundException>(() => new ConsultarSeguimientoProyectoUseCase(proyectos.Object).ExecuteAsync(Guid.NewGuid()));
+    }
+
+    // -- Agregar un miembro al equipo ahora es solo buscarlo por nombre (Alicia 2026-09-09): el
+    // "Rol" funcional (Ejecutivo/Comercial/...) dejó de pedirse en el flujo nuevo, así que el
+    // validador tiene que aceptar un Rol vacío sin rechazar el proyecto.
+    [Fact]
+    public void CrearProyectoValidator_allows_a_team_member_with_no_functional_role()
+    {
+        var dto = new CrearProyectoDto
+        {
+            Nombre = "Lanzamiento Q4",
+            EstadoId = Guid.NewGuid(),
+            PorcentajeAvance = 0,
+            EstadoBrief = "Pendiente por enviar",
+            PropuestaEstado = "No enviada",
+            Equipo = [new ProyectoEquipoDto { Nombre = "Juliana Pérez", Rol = "" }],
+        };
+
+        var result = new CrearProyectoValidator().Validate(dto);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void CrearProyectoValidator_still_rejects_an_unknown_functional_role()
+    {
+        var dto = new CrearProyectoDto
+        {
+            Nombre = "Lanzamiento Q4",
+            EstadoId = Guid.NewGuid(),
+            PorcentajeAvance = 0,
+            EstadoBrief = "Pendiente por enviar",
+            PropuestaEstado = "No enviada",
+            Equipo = [new ProyectoEquipoDto { Nombre = "Juliana Pérez", Rol = "Astronauta" }],
+        };
+
+        var result = new CrearProyectoValidator().Validate(dto);
+
+        Assert.False(result.IsValid);
     }
 }

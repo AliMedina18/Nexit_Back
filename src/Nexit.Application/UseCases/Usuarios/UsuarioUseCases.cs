@@ -11,6 +11,10 @@ public class CrearUsuarioUseCase(IUsuarioRepository repository, IUnitOfWork unit
 {
     public async Task<UsuarioResponseDto> ExecuteAsync(CreateUsuarioDto input, CancellationToken cancellationToken = default)
     {
+        // Desde que este endpoint pasó de SuperAdminOnly a AdminOrAbove (2026-09-09), una
+        // administradora también puede llamarlo -- pero nadie más que la super administradora
+        // sembrada directamente en la base puede llevar ese rol (ver Roles.Asignables).
+        if (input.Rol == Roles.SuperAdmin) throw new ForbiddenOperationException("No puedes crear una cuenta con el rol de super administrador.");
         var usuario = new Usuario { Id = input.Id, Nombre = input.Nombre, Apellido = input.Apellido, Email = input.Email, Rol = input.Rol, Iniciales = input.Iniciales, Activo = input.Activo };
         await repository.AddAsync(usuario, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -106,6 +110,23 @@ public class ConsultarUsuariosUseCase(IUsuarioRepository repository) : IConsulta
 {
     public async Task<IReadOnlyList<UsuarioResponseDto>> ListAsync(CancellationToken cancellationToken = default) => (await repository.GetAllAsync(cancellationToken)).Select(UsuarioMapper.ToResponse).ToList();
     public async Task<UsuarioResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => UsuarioMapper.ToResponse(await repository.GetByIdAsync(id, cancellationToken) ?? throw new EntityNotFoundException("Usuario", id));
+}
+
+/// <summary>
+/// Solo activos con rol miembro o manager (Director) -- ni admin ni super_admin, Alicia 2026-09-09:
+/// "el administrador como tal no participa en esto". Abierto a cualquier autenticado con perfil (ver
+/// la política del endpoint) porque armar el equipo de un proyecto no es exclusivo de admin+.
+/// </summary>
+public class ConsultarUsuariosEquipoUseCase(IUsuarioRepository repository) : IConsultarUsuariosEquipoUseCase
+{
+    private static readonly string[] RolesEquipo = [Roles.Miembro, Roles.Manager];
+
+    public async Task<IReadOnlyList<UsuarioEquipoDto>> ListAsync(CancellationToken cancellationToken = default) =>
+        (await repository.GetAllAsync(cancellationToken))
+            .Where(u => u.Activo && RolesEquipo.Contains(u.Rol))
+            .OrderBy(u => u.Nombre).ThenBy(u => u.Apellido)
+            .Select(u => new UsuarioEquipoDto { Id = u.Id, Nombre = u.Nombre, Apellido = u.Apellido, Rol = u.Rol })
+            .ToList();
 }
 
 // El antiguo EliminarUsuarioUseCase (borrado inmediato por el super_admin) desapareció el

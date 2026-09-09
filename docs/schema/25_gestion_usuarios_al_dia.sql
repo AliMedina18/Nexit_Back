@@ -1,8 +1,18 @@
 -- ============================================================
 -- Gestión de usuarios al día (2026-09-08)
 -- ============================================================
--- Corre esto UNA VEZ en el SQL Editor de Supabase. Es idempotente: si lo corres dos veces no pasa
--- nada, y si una parte ya estaba aplicada la salta sola. No borra datos.
+-- Corre esto UNA VEZ **contra la base a la que apunta tu backend**. Es idempotente: si lo corres dos
+-- veces no pasa nada, y si una parte ya estaba aplicada la salta sola. No borra datos. Funciona igual
+-- en la base local y en Supabase.
+--
+--   * Si el backend arranca con `dotnet run` / F5 (entorno Development), apunta a
+--     `appsettings.Development.json` -> Postgres LOCAL, base `nexit_dev`. Ábrela con pgAdmin o DBeaver
+--     y pega este archivo, o desde una consola en la raíz del repo:
+--         psql -h localhost -U postgres -d nexit_dev -f docs/schema/25_gestion_usuarios_al_dia.sql
+--   * Si es el backend publicado (entorno Production), apunta a Supabase -> pégalo en su SQL Editor.
+--
+-- Hay que correrlo en LAS DOS si usas las dos. Un `relation "..." does not exist` significa que la
+-- base que estás usando en ese momento todavía no lo tiene.
 --
 -- Qué arregla, en orden de urgencia:
 --
@@ -67,10 +77,22 @@ CREATE INDEX IF NOT EXISTS ix_invitaciones_equipo_invitado_por_id ON invitacione
 
 -- RLS -- mismo criterio que el resto del esquema (04, sección 2; y el archivo 07): solo el rol de
 -- aplicación nexit_app pasa; PostgREST (anon/authenticated) queda bloqueado al no tener política.
-ALTER TABLE invitaciones_equipo ENABLE ROW LEVEL SECURITY;
+--
+-- El rol `nexit_app` solo existe en Supabase: en la base local `nexit_dev` se conecta como `postgres`,
+-- que es dueño de la tabla y se salta RLS igual. Por eso todo este bloque se salta solo cuando el rol
+-- no existe, en vez de tumbar el script con `role "nexit_app" does not exist`.
 DO $$ BEGIN
-    CREATE POLICY "solo_nexit_app" ON invitaciones_equipo FOR ALL TO nexit_app USING (true) WITH CHECK (true);
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexit_app') THEN
+        EXECUTE 'ALTER TABLE invitaciones_equipo ENABLE ROW LEVEL SECURITY';
+        BEGIN
+            EXECUTE 'CREATE POLICY "solo_nexit_app" ON invitaciones_equipo FOR ALL TO nexit_app USING (true) WITH CHECK (true)';
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+        EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON invitaciones_equipo TO nexit_app';
+    ELSE
+        RAISE NOTICE 'El rol nexit_app no existe en esta base (normal en nexit_dev): se omite RLS para invitaciones_equipo.';
+    END IF;
+END $$;
 
 
 -- ------------------------------------------------------------

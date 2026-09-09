@@ -58,8 +58,11 @@ public class ProyectosController(ICrearProyectoUseCase crear, IActualizarProyect
         return Ok(await actualizar.ExecuteAsync(dto, userId, GetUserRole(), ct));
     }
 
-    [HttpDelete("{id:guid}"), Authorize(Policy = "AdminOrAbove")]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { await eliminar.ExecuteAsync(id, GetUserId(), ct); return NoContent(); }
+    // Director (manager) también elimina directo, sin pasar por SolicitudesEliminacionController
+    // (Alicia 2026-09-09) -- ver DirectorOrAbove en Program.cs. El administrador recibe una
+    // notificación cuando quien elimina es un director (ver EliminarProyectoUseCase).
+    [HttpDelete("{id:guid}"), Authorize(Policy = "DirectorOrAbove")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { await eliminar.ExecuteAsync(id, GetUserId(), GetUserRole(), ct); return NoContent(); }
 
     [HttpPost("{id:guid}/seguimiento")]
     public async Task<ActionResult<SeguimientoProyectoDto>> AddSeguimiento(Guid id, CrearSeguimientoProyectoDto dto, CancellationToken ct)

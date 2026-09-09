@@ -17,6 +17,8 @@ public class SolicitudEliminacionResponseDto
     public Guid Id { get; set; }
     public string TipoEntidad { get; set; } = string.Empty;
     public Guid EntidadId { get; set; }
+    /// <summary>Nombre de la entidad al momento de la solicitud -- se conserva aunque luego se elimine (ver SolicitudEliminacion.EntidadNombre).</summary>
+    public string? EntidadNombre { get; set; }
     public Guid? SolicitadoPorId { get; set; }
     public string? Motivo { get; set; }
     public string Estado { get; set; } = string.Empty;
