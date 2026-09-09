@@ -111,7 +111,7 @@ Las políticas de ASP.NET Core (`SuperAdminOnly`, `AdminOrAbove`) solo pueden mi
 
 - **Crear** (`POST /api/usuarios`): recibe el `Id` (el UUID que Supabase Auth ya le asignó a la cuenta) además de nombre/apellido/email/rol — este backend nunca crea contraseñas ni envía invitaciones; ese flujo vive en Supabase Auth (Authentication → Users → Invite). La súper administradora primero invita a la persona desde el dashboard de Supabase, y luego registra aquí su perfil de negocio con ese mismo UUID.
 - **Editar** (`PUT /api/usuarios/{id}`): nombre, apellido, rol, iniciales, activo.
-- **Eliminar** (`DELETE /api/usuarios/{id}`): hard delete real (no lógico). Es seguro a nivel de base de datos porque las columnas de auditoría que referencian a `usuarios` (`created_by`, `autor_id`, etc.) están configuradas con `ON DELETE SET NULL` — al borrar un usuario, su historial (proyectos creados, notas de seguimiento) queda intacto, solo pierde el vínculo a "quién lo hizo".
+- **Eliminar** (ya NO hay endpoint directo desde el 2026-09-08, ver docs/40: se pide con `POST /api/solicitudeseliminacion` `{ tipoEntidad: "usuario" }` y lo ejecuta quien apruebe esa solicitud): hard delete real (no lógico). Es seguro a nivel de base de datos porque las columnas de auditoría que referencian a `usuarios` (`created_by`, `autor_id`, etc.) están configuradas con `ON DELETE SET NULL` — al borrar un usuario, su historial (proyectos creados, notas de seguimiento) queda intacto, solo pierde el vínculo a "quién lo hizo".
 - **Desactivar sin eliminar**: `PUT` con `activo = false` — para dar de baja a alguien temporalmente sin perder su historial ni su fila.
 
 ### Protecciones de auto-bloqueo

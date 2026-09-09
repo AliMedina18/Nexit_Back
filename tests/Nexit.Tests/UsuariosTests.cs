@@ -16,6 +16,13 @@ namespace Nexit.Tests;
 /// </summary>
 public class UsuariosTests
 {
+    /// <summary>
+    /// Configuración real pero sin valores -- así los `GetValue(clave, porDefecto)` del código
+    /// devuelven su valor por defecto, que es justo lo que pasa en una instalación sin configurar.
+    /// Un `Mock.Of&lt;IConfiguration&gt;()` no sirve: su GetSection devuelve null y GetValue revienta.
+    /// </summary>
+    private static readonly IConfiguration ConfiguracionVacia = new ConfigurationBuilder().Build();
+
     [Fact]
     public async Task CrearUsuario_persists_the_supabase_auth_id_as_the_profile_id()
     {
@@ -39,7 +46,7 @@ public class UsuariosTests
     {
         var repository = new Mock<IUsuarioRepository>();
         repository.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Usuario?)null);
-        await Assert.ThrowsAsync<EntityNotFoundException>(() => new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IUnitOfWork>())
+        await Assert.ThrowsAsync<EntityNotFoundException>(() => new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IEmailService>(), ConfiguracionVacia, Mock.Of<IUnitOfWork>())
             .ExecuteAsync(Guid.NewGuid(), new UpdateUsuarioDto { Rol = Roles.Admin }, Guid.NewGuid()));
     }
 
@@ -52,7 +59,7 @@ public class UsuariosTests
         var usuario = new Usuario { Id = id, Nombre = "Ana", Apellido = "Ruiz", Email = "ana@next.com", Rol = Roles.Miembro, Activo = true };
         repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(usuario);
 
-        var result = await new ActualizarUsuarioUseCase(repository.Object, unitOfWork.Object)
+        var result = await new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IEmailService>(), ConfiguracionVacia, unitOfWork.Object)
             .ExecuteAsync(id, new UpdateUsuarioDto { Nombre = "Ana", Apellido = "Ruiz", Rol = Roles.Manager, Activo = true }, Guid.NewGuid());
 
         Assert.Equal(Roles.Manager, result.Rol);
@@ -66,7 +73,7 @@ public class UsuariosTests
         var id = Guid.NewGuid();
         repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new Usuario { Id = id, Rol = Roles.SuperAdmin, Activo = true });
 
-        await Assert.ThrowsAsync<ForbiddenOperationException>(() => new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IUnitOfWork>())
+        await Assert.ThrowsAsync<ForbiddenOperationException>(() => new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IEmailService>(), ConfiguracionVacia, Mock.Of<IUnitOfWork>())
             .ExecuteAsync(id, new UpdateUsuarioDto { Rol = Roles.SuperAdmin, Activo = false }, id));
     }
 
@@ -77,7 +84,7 @@ public class UsuariosTests
         var id = Guid.NewGuid();
         repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new Usuario { Id = id, Rol = Roles.SuperAdmin, Activo = true });
 
-        await Assert.ThrowsAsync<ForbiddenOperationException>(() => new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IUnitOfWork>())
+        await Assert.ThrowsAsync<ForbiddenOperationException>(() => new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IEmailService>(), ConfiguracionVacia, Mock.Of<IUnitOfWork>())
             .ExecuteAsync(id, new UpdateUsuarioDto { Rol = Roles.Admin, Activo = true }, id));
     }
 
@@ -89,51 +96,15 @@ public class UsuariosTests
         var id = Guid.NewGuid();
         repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new Usuario { Id = id, Rol = Roles.SuperAdmin, Activo = true });
 
-        var result = await new ActualizarUsuarioUseCase(repository.Object, unitOfWork.Object)
+        var result = await new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IEmailService>(), ConfiguracionVacia, unitOfWork.Object)
             .ExecuteAsync(id, new UpdateUsuarioDto { Nombre = "Alicia", Apellido = "Medina", Rol = Roles.SuperAdmin, Activo = true }, id);
 
         Assert.Equal("Alicia", result.Nombre);
     }
 
-    [Fact]
-    public async Task EliminarUsuario_rejects_deleting_your_own_account()
-    {
-        var repository = new Mock<IUsuarioRepository>();
-        var id = Guid.NewGuid();
-        await Assert.ThrowsAsync<ForbiddenOperationException>(() => new EliminarUsuarioUseCase(repository.Object, Mock.Of<IUsuarioEliminadoRepository>(), Mock.Of<ISupabaseAuthAdminService>(), Mock.Of<IUnitOfWork>()).ExecuteAsync(id, id));
-        repository.Verify(x => x.DeleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task EliminarUsuario_archives_then_deletes_someone_else_and_removes_their_auth_account()
-    {
-        var repository = new Mock<IUsuarioRepository>();
-        var archivoRepository = new Mock<IUsuarioEliminadoRepository>();
-        var authAdmin = new Mock<ISupabaseAuthAdminService>();
-        var unitOfWork = new Mock<IUnitOfWork>();
-        var id = Guid.NewGuid();
-        var callerId = Guid.NewGuid();
-        repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new Usuario { Id = id, Nombre = "Ana", Apellido = "Ruiz", Email = "ana@agencianextmkt.com", Rol = Roles.Miembro });
-        UsuarioEliminado? archivado = null;
-        archivoRepository.Setup(x => x.AddAsync(It.IsAny<UsuarioEliminado>(), It.IsAny<CancellationToken>())).Callback<UsuarioEliminado, CancellationToken>((u, _) => archivado = u).Returns(Task.CompletedTask);
-
-        await new EliminarUsuarioUseCase(repository.Object, archivoRepository.Object, authAdmin.Object, unitOfWork.Object).ExecuteAsync(id, callerId);
-
-        Assert.NotNull(archivado);
-        Assert.Equal(id, archivado!.UsuarioIdOriginal);
-        Assert.Equal(callerId, archivado.EliminadoPorId);
-        repository.Verify(x => x.DeleteAsync(id, It.IsAny<CancellationToken>()), Times.Once);
-        unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-        authAdmin.Verify(x => x.EliminarCuentaAsync(id, It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task EliminarUsuario_throws_when_user_does_not_exist()
-    {
-        var repository = new Mock<IUsuarioRepository>();
-        repository.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Usuario?)null);
-        await Assert.ThrowsAsync<EntityNotFoundException>(() => new EliminarUsuarioUseCase(repository.Object, Mock.Of<IUsuarioEliminadoRepository>(), Mock.Of<ISupabaseAuthAdminService>(), Mock.Of<IUnitOfWork>()).ExecuteAsync(Guid.NewGuid(), Guid.NewGuid()));
-    }
+    // Los tres tests de EliminarUsuarioUseCase se movieron a SolicitudesEliminacionTests el
+    // 2026-09-08 junto con la lógica: eliminar a una persona ya no es una acción directa, es aprobar
+    // una solicitud de tipo "usuario" (docs/40).
 
     [Fact]
     public async Task ActualizarUsuario_stamps_FechaDesactivacion_when_deactivating()
@@ -142,7 +113,7 @@ public class UsuariosTests
         var id = Guid.NewGuid();
         repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new Usuario { Id = id, Rol = Roles.Miembro, Activo = true, FechaDesactivacion = null });
 
-        var result = await new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IUnitOfWork>())
+        var result = await new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IEmailService>(), ConfiguracionVacia, Mock.Of<IUnitOfWork>())
             .ExecuteAsync(id, new UpdateUsuarioDto { Nombre = "Ana", Apellido = "Ruiz", Rol = Roles.Miembro, Activo = false }, Guid.NewGuid());
 
         Assert.False(result.Activo);
@@ -156,7 +127,7 @@ public class UsuariosTests
         var id = Guid.NewGuid();
         repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new Usuario { Id = id, Rol = Roles.Miembro, Activo = false, FechaDesactivacion = DateTime.UtcNow.AddDays(-10) });
 
-        var result = await new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IUnitOfWork>())
+        var result = await new ActualizarUsuarioUseCase(repository.Object, Mock.Of<IEmailService>(), ConfiguracionVacia, Mock.Of<IUnitOfWork>())
             .ExecuteAsync(id, new UpdateUsuarioDto { Nombre = "Ana", Apellido = "Ruiz", Rol = Roles.Miembro, Activo = true }, Guid.NewGuid());
 
         Assert.True(result.Activo);
@@ -208,4 +179,102 @@ public class UsuariosTests
         Assert.Single(result);
         Assert.Equal("Ana", result[0].Nombre);
     }
+
+    // --- Alta manual, sin correo de invitación de por medio (2026-09-08, docs/38).
+
+    [Fact]
+    public async Task RegistrarUsuario_usa_como_id_el_uuid_que_devuelve_Supabase()
+    {
+        // Es la razón de ser de este camino: el id del perfil TIENE que ser el de la cuenta de
+        // Supabase Auth, porque es lo que trae el JWT con el que esa persona va a autenticarse.
+        var idDeSupabase = Guid.NewGuid();
+        var callerId = Guid.NewGuid();
+        var authAdmin = new Mock<ISupabaseAuthAdminService>();
+        authAdmin.Setup(x => x.CrearCuentaAsync("nueva@agencianextmkt.com", It.IsAny<CancellationToken>())).ReturnsAsync(idDeSupabase);
+        var repository = new Mock<IUsuarioRepository>();
+        Usuario? guardado = null;
+        repository.Setup(x => x.AddAsync(It.IsAny<Usuario>(), It.IsAny<CancellationToken>()))
+            .Callback<Usuario, CancellationToken>((u, _) => guardado = u).Returns(Task.CompletedTask);
+        var uow = new Mock<IUnitOfWork>();
+
+        var result = await new RegistrarUsuarioUseCase(repository.Object, authAdmin.Object, uow.Object)
+            .ExecuteAsync(new RegistrarUsuarioDto { Nombre = "Nueva", Apellido = "Persona", Email = "nueva@agencianextmkt.com", Rol = "admin" }, callerId);
+
+        Assert.Equal(idDeSupabase, result.Id);
+        Assert.NotNull(guardado);
+        Assert.Equal(idDeSupabase, guardado!.Id);
+        Assert.Equal("admin", guardado.Rol);
+        Assert.True(guardado.Activo);
+        Assert.Equal(callerId, guardado.CreatedBy);
+        uow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RegistrarUsuario_no_guarda_perfil_si_Supabase_no_pudo_crear_la_cuenta()
+    {
+        // Sin cuenta de acceso, un perfil de negocio es una fila que nadie puede usar nunca.
+        var authAdmin = new Mock<ISupabaseAuthAdminService>();
+        authAdmin.Setup(x => x.CrearCuentaAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new BusinessRuleException("Ese correo ya tiene una cuenta en Supabase Auth."));
+        var repository = new Mock<IUsuarioRepository>();
+        var uow = new Mock<IUnitOfWork>();
+
+        await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            new RegistrarUsuarioUseCase(repository.Object, authAdmin.Object, uow.Object)
+                .ExecuteAsync(new RegistrarUsuarioDto { Nombre = "Nueva", Apellido = "Persona", Email = "nueva@agencianextmkt.com" }, Guid.NewGuid()));
+
+        repository.Verify(x => x.AddAsync(It.IsAny<Usuario>(), It.IsAny<CancellationToken>()), Times.Never);
+        uow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // --- El aviso por correo a la persona afectada (2026-09-08, docs/39). Es el único correo que
+    // este backend manda por su cuenta: una notificación dentro del sistema no serviría, porque
+    // quien acaba de perder el acceso justamente ya no puede entrar a verla.
+
+    [Fact]
+    public async Task ActualizarUsuario_le_avisa_por_correo_a_quien_desactiva()
+    {
+        var id = Guid.NewGuid();
+        var repository = new Mock<IUsuarioRepository>();
+        repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Usuario { Id = id, Nombre = "Ex", Apellido = "Compañero", Email = "ex@agencianextmkt.com", Rol = "miembro", Activo = true });
+        var email = new Mock<IEmailService>();
+
+        await new ActualizarUsuarioUseCase(repository.Object, email.Object, ConfiguracionVacia, Mock.Of<IUnitOfWork>())
+            .ExecuteAsync(id, new UpdateUsuarioDto { Nombre = "Ex", Apellido = "Compañero", Rol = "miembro", Activo = false }, Guid.NewGuid());
+
+        email.Verify(x => x.EnviarAsync("ex@agencianextmkt.com", It.Is<string>(a => a.Contains("suspendido")), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ActualizarUsuario_le_avisa_por_correo_a_quien_reactiva()
+    {
+        var id = Guid.NewGuid();
+        var repository = new Mock<IUsuarioRepository>();
+        repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Usuario { Id = id, Nombre = "Vuelve", Apellido = "Persona", Email = "vuelve@agencianextmkt.com", Rol = "miembro", Activo = false, FechaDesactivacion = DateTime.UtcNow.AddDays(-3) });
+        var email = new Mock<IEmailService>();
+
+        await new ActualizarUsuarioUseCase(repository.Object, email.Object, ConfiguracionVacia, Mock.Of<IUnitOfWork>())
+            .ExecuteAsync(id, new UpdateUsuarioDto { Nombre = "Vuelve", Apellido = "Persona", Rol = "miembro", Activo = true }, Guid.NewGuid());
+
+        email.Verify(x => x.EnviarAsync("vuelve@agencianextmkt.com", It.Is<string>(a => a.Contains("volvió")), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ActualizarUsuario_no_manda_ningun_correo_si_solo_se_corrige_el_nombre()
+    {
+        // Nadie quiere recibir "tu acceso quedó suspendido" porque le arreglaron una tilde al apellido.
+        var id = Guid.NewGuid();
+        var repository = new Mock<IUsuarioRepository>();
+        repository.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Usuario { Id = id, Nombre = "Ana", Apellido = "Ruiz", Email = "ana@agencianextmkt.com", Rol = "miembro", Activo = true });
+        var email = new Mock<IEmailService>();
+
+        await new ActualizarUsuarioUseCase(repository.Object, email.Object, ConfiguracionVacia, Mock.Of<IUnitOfWork>())
+            .ExecuteAsync(id, new UpdateUsuarioDto { Nombre = "Ana María", Apellido = "Ruiz", Rol = "miembro", Activo = true }, Guid.NewGuid());
+
+        email.Verify(x => x.EnviarAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }
+

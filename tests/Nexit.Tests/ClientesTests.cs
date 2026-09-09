@@ -26,7 +26,11 @@ public class ClientesTests
         repository.Setup(x => x.ExistsByEmailAsync("contacto@nexit.com", null, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var dto = new CreateClienteDto { Nombre = "Nexit", Emails = [new ClienteEmailDto { Email = "contacto@nexit.com" }], Telefonos = [new ClienteTelefonoDto { Telefono = "3000000000" }] };
         var result = await new CreateClienteValidator(repository.Object).TestValidateAsync(dto);
-        result.ShouldHaveValidationErrorFor("Emails[0].Email");
+        // "Emails[0]", no "Emails[0].Email": la regla de duplicados es un RuleForEach sobre la
+        // colección (necesita el correo entero para consultar el repositorio), no una ChildRule
+        // sobre la propiedad Email -- FluentValidation nombra el error por dónde vive la regla. La
+        // ChildRule de formato sí reporta en "Emails[0].Email"; son dos reglas distintas.
+        result.ShouldHaveValidationErrorFor("Emails[0]").WithErrorMessage("El email ya está registrado");
     }
 
     [Fact]

@@ -21,4 +21,21 @@ public interface ISupabaseAuthAdminService
     /// pensando que se envió la invitación cuando en realidad no pasó nada.
     /// </summary>
     Task InvitarUsuarioAsync(string email, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Crea la cuenta de acceso de alguien SIN mandarle un correo de invitación (2026-09-08, pedido
+    /// de Alicia: "a veces uno también puede crear un usuario manualmente"). Devuelve el UUID que
+    /// Supabase le asigna, que es el mismo que se usa como <c>usuarios.id</c> -- eso es lo que
+    /// permite dar de alta a alguien de una vez, sin depender de que abra un correo y responda.
+    ///
+    /// La cuenta se crea SIN contraseña a propósito: nadie más que la propia persona debe conocerla.
+    /// La primera vez entra con el código de un solo uso que ya maneja la pantalla de login
+    /// (docs/30) y ahí mismo crea su contraseña, exactamente igual que quien llega por invitación.
+    ///
+    /// Igual que <see cref="InvitarUsuarioAsync"/> y a diferencia de <see cref="EliminarCuentaAsync"/>,
+    /// lanza <c>BusinessRuleException</c> si la Service Role Key no está configurada o si Supabase
+    /// rechaza la creación: sin cuenta de acceso no hay usuario, así que fallar en silencio dejaría
+    /// un perfil que nunca podría iniciar sesión.
+    /// </summary>
+    Task<Guid> CrearCuentaAsync(string email, CancellationToken cancellationToken = default);
 }

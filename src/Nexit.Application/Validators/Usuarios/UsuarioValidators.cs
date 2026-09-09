@@ -25,6 +25,27 @@ public class CreateUsuarioValidator : AbstractValidator<CreateUsuarioDto>
     }
 }
 
+/// <summary>
+/// Mismas reglas de correo que <see cref="CreateUsuarioValidator"/> (único y de dominio laboral
+/// permitido) pero sin exigir Id: ese lo devuelve Supabase al crear la cuenta, no lo manda nadie.
+/// </summary>
+public class RegistrarUsuarioValidator : AbstractValidator<RegistrarUsuarioDto>
+{
+    public RegistrarUsuarioValidator(IUsuarioRepository repository, IDominioCorreoPermitidoRepository dominios)
+    {
+        RuleFor(x => x.Nombre).NotEmpty().MaximumLength(255);
+        RuleFor(x => x.Apellido).NotEmpty().MaximumLength(255);
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(255);
+        RuleFor(x => x.Email).MustAsync(async (email, token) => !await repository.ExistsByEmailAsync(email, null, token))
+            .WithMessage("Ya existe un usuario con ese correo.").When(x => !string.IsNullOrWhiteSpace(x.Email));
+        RuleFor(x => x.Email).MustAsync(async (email, token) => await dominios.EsDominioPermitidoAsync(email, token))
+            .WithMessage("El correo no pertenece a un dominio laboral permitido.").When(x => !string.IsNullOrWhiteSpace(x.Email));
+        RuleFor(x => x.Rol).Must(rol => Roles.Asignables.Contains(rol))
+            .WithMessage($"El rol debe ser uno de: {string.Join(", ", Roles.Asignables)}. No se puede registrar a nadie como super administrador.");
+        RuleFor(x => x.Iniciales).MaximumLength(3);
+    }
+}
+
 public class UpdateUsuarioValidator : AbstractValidator<UpdateUsuarioDto>
 {
     public UpdateUsuarioValidator()

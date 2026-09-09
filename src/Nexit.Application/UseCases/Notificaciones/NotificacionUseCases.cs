@@ -37,20 +37,35 @@ internal static class NotificacionMapper
 /// </summary>
 internal static class NotificacionFactory
 {
+    /// <summary>
+    /// "un cliente" / "una cuenta de usuario"... -- existe porque los textos se construyen
+    /// interpolando <c>TipoEntidad</c>, y desde que se puede solicitar eliminar personas (docs/40)
+    /// "eliminar un usuario" sonaba a inventario. Ante un tipo desconocido cae en algo neutro en vez
+    /// de romper: estas notificaciones nunca deben tumbar la operación que las dispara.
+    /// </summary>
+    internal static string Articulo(string tipoEntidad) => tipoEntidad switch
+    {
+        "cliente" => "un cliente",
+        "proveedor" => "un proveedor",
+        "proyecto" => "un proyecto",
+        "usuario" => "una cuenta de usuario",
+        _ => "un registro"
+    };
+
     public static Notificacion SolicitudCreadaParaGerente(Guid gerenteId, SolicitudEliminacion solicitud) => new()
     {
         UsuarioDestinatarioId = gerenteId, Tipo = "solicitud_eliminacion_creada",
-        Titulo = $"Te pidieron eliminar un {solicitud.TipoEntidad}",
-        Mensaje = $"Alguien de tu equipo solicitó eliminar un {solicitud.TipoEntidad} que lideras. Motivo: {solicitud.Motivo ?? "(sin motivo indicado)"}.",
+        Titulo = $"Te pidieron eliminar {Articulo(solicitud.TipoEntidad)}",
+        Mensaje = $"Alguien de tu equipo solicitó eliminar {Articulo(solicitud.TipoEntidad)} que lideras. Motivo: {solicitud.Motivo ?? "(sin motivo indicado)"}.",
         TipoEntidad = solicitud.TipoEntidad, EntidadId = solicitud.EntidadId, SolicitudId = solicitud.Id
     };
 
     public static Notificacion SolicitudCreadaParaAdmin(Guid adminId, SolicitudEliminacion solicitud, int totalPendientesParaEstaEntidad) => new()
     {
         UsuarioDestinatarioId = adminId, Tipo = "solicitud_eliminacion_creada",
-        Titulo = $"Solicitud para eliminar un {solicitud.TipoEntidad}",
+        Titulo = $"Solicitud para eliminar {Articulo(solicitud.TipoEntidad)}",
         Mensaje = totalPendientesParaEstaEntidad > 1
-            ? $"Motivo: {solicitud.Motivo ?? "(sin motivo indicado)"}. Ya van {totalPendientesParaEstaEntidad} solicitudes pendientes para este mismo {solicitud.TipoEntidad}."
+            ? $"Motivo: {solicitud.Motivo ?? "(sin motivo indicado)"}. Ya van {totalPendientesParaEstaEntidad} solicitudes pendientes para {Articulo(solicitud.TipoEntidad)} igual."
             : $"Motivo: {solicitud.Motivo ?? "(sin motivo indicado)"}.",
         TipoEntidad = solicitud.TipoEntidad, EntidadId = solicitud.EntidadId, SolicitudId = solicitud.Id
     };
@@ -58,16 +73,39 @@ internal static class NotificacionFactory
     public static Notificacion GerenteEndoso(Guid adminId, SolicitudEliminacion solicitud) => new()
     {
         UsuarioDestinatarioId = adminId, Tipo = "solicitud_eliminacion_endosada",
-        Titulo = $"El gerente responsable ya aprobó eliminar un {solicitud.TipoEntidad}",
-        Mensaje = $"Falta tu decisión final para completar la eliminación de este {solicitud.TipoEntidad}.",
+        Titulo = $"El gerente responsable ya aprobó eliminar {Articulo(solicitud.TipoEntidad)}",
+        Mensaje = $"Falta tu decisión final para completar esta eliminación.",
         TipoEntidad = solicitud.TipoEntidad, EntidadId = solicitud.EntidadId, SolicitudId = solicitud.Id
     };
 
-    public static Notificacion DecisionParaSolicitante(SolicitudEliminacion solicitud, bool aprobada, string? comentario) => new()
+    /// <summary>
+    /// Le avisa a quien invitó que ya le respondieron (2026-09-08). Sin esto, la única forma de
+    /// enterarse era entrar a Usuarios y notar que la invitación desapareció de la lista de
+    /// pendientes -- nadie revisa eso a diario, así que en la práctica no se enteraba.
+    /// </summary>
+    public static Notificacion? InvitacionRespondida(Guid? invitadoPorId, string email, bool aceptada) => invitadoPorId is null ? null : new()
     {
-        UsuarioDestinatarioId = solicitud.SolicitadoPorId, Tipo = "solicitud_eliminacion_decidida",
-        Titulo = aprobada ? $"Tu solicitud de eliminar un {solicitud.TipoEntidad} fue aprobada" : $"Tu solicitud de eliminar un {solicitud.TipoEntidad} fue rechazada",
-        Mensaje = string.IsNullOrWhiteSpace(comentario) ? (aprobada ? "Se eliminó según lo solicitado." : "No se eliminó.") : comentario,
+        UsuarioDestinatarioId = invitadoPorId.Value,
+        Tipo = aceptada ? "invitacion_aceptada" : "invitacion_rechazada",
+        Titulo = aceptada ? "Alguien aceptó tu invitación" : "Rechazaron tu invitación",
+        Mensaje = aceptada
+            ? $"{email} ya creó su perfil y puede entrar a Nexit."
+            : $"{email} rechazó la invitación, así que no se creó ningún perfil.",
+    };
+
+    /// <summary>
+    /// <c>null</c> cuando quien la pidió ya no está en el equipo (SolicitadoPorId quedó en null al
+    /// eliminar su cuenta): no hay a quién avisarle, y la decisión se toma igual.
+    /// </summary>
+    public static Notificacion? DecisionParaSolicitante(SolicitudEliminacion solicitud, bool aprobada, string? comentario) => solicitud.SolicitadoPorId is null ? null : new()
+    {
+        UsuarioDestinatarioId = solicitud.SolicitadoPorId.Value, Tipo = "solicitud_eliminacion_decidida",
+        Titulo = aprobada ? $"Aprobaron tu solicitud de eliminar {Articulo(solicitud.TipoEntidad)}" : $"Rechazaron tu solicitud de eliminar {Articulo(solicitud.TipoEntidad)}",
+        // El comentario de quien decidió se agrega DESPUÉS de la frase, no la reemplaza: antes, si
+        // escribía algo, la notificación era solo ese texto suelto y quien la recibía no sabía si le
+        // habían dicho que sí o que no.
+        Mensaje = (aprobada ? "Se eliminó según lo solicitado." : "No se eliminó.")
+                  + (string.IsNullOrWhiteSpace(comentario) ? "" : $" {comentario.Trim()}"),
         TipoEntidad = solicitud.TipoEntidad, EntidadId = solicitud.EntidadId, SolicitudId = solicitud.Id
     };
 }

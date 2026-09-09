@@ -4,6 +4,10 @@ Esto responde a lo que pediste en la última ronda: notificaciones para solicitu
 
 ## 1. Notificaciones (bandeja + historial permanente)
 
+> **Actualizado 2026-09-08 (docs/40):** los tipos de notificación ya son cinco — se sumaron
+> `invitacion_aceptada` e `invitacion_rechazada` (docs/38) — y las solicitudes de eliminación
+> aceptan un cuarto `tipo_entidad`: `usuario`. Todo lo demás de esta sección sigue igual.
+
 **Tabla nueva `notificaciones`:** una fila por notificación, por destinatario — `id`, `usuario_destinatario_id`, `tipo` (`solicitud_eliminacion_creada`, `solicitud_eliminacion_endosada`, `solicitud_eliminacion_decidida`), `titulo`, `mensaje`, `tipo_entidad`/`entidad_id` (para poder llevar a la persona directo a lo que originó la notificación), `solicitud_id`, `leida` (booleano), `fecha_creacion`, `fecha_leida`. No se borra nunca — "leída" no es lo mismo que "eliminada", así queda el historial permanente que pediste.
 
 **Cuándo se dispara cada una:**

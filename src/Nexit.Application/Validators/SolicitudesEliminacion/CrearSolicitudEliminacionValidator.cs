@@ -1,21 +1,24 @@
 using FluentValidation;
 using Nexit.Application.DTOs.SolicitudesEliminacion;
+using Nexit.Core.Constants;
 using Nexit.Core.Interfaces;
 
 namespace Nexit.Application.Validators.SolicitudesEliminacion;
 
 public class CrearSolicitudEliminacionValidator : AbstractValidator<CrearSolicitudEliminacionDto>
 {
-    public CrearSolicitudEliminacionValidator(IClienteRepository clientes, IProveedorRepository proveedores, IProyectoRepository proyectos)
+    public CrearSolicitudEliminacionValidator(
+        IClienteRepository clientes, IProveedorRepository proveedores, IProyectoRepository proyectos, IUsuarioRepository usuarios)
     {
-        RuleFor(x => x.TipoEntidad).Must(tipo => tipo is "cliente" or "proveedor" or "proyecto")
-            .WithMessage("tipoEntidad debe ser 'cliente', 'proveedor' o 'proyecto'.");
+        RuleFor(x => x.TipoEntidad).Must(tipo => TiposEntidadEliminable.Todos.Contains(tipo))
+            .WithMessage("tipoEntidad debe ser 'cliente', 'proveedor', 'proyecto' o 'usuario'.");
         RuleFor(x => x.EntidadId).MustAsync(async (dto, entidadId, token) => dto.TipoEntidad switch
         {
-            "cliente" => await clientes.GetByIdAsync(entidadId, token) is not null,
-            "proveedor" => await proveedores.GetByIdAsync(entidadId, token) is not null,
-            "proyecto" => await proyectos.GetByIdAsync(entidadId, token) is not null,
+            TiposEntidadEliminable.Cliente => await clientes.GetByIdAsync(entidadId, token) is not null,
+            TiposEntidadEliminable.Proveedor => await proveedores.GetByIdAsync(entidadId, token) is not null,
+            TiposEntidadEliminable.Proyecto => await proyectos.GetByIdAsync(entidadId, token) is not null,
+            TiposEntidadEliminable.Usuario => await usuarios.GetByIdAsync(entidadId, token) is not null,
             _ => true // el tipo inválido ya lo reporta la regla de arriba
-        }).WithMessage("La entidad indicada no existe.").When(x => x.TipoEntidad is "cliente" or "proveedor" or "proyecto");
+        }).WithMessage("La entidad indicada no existe.").When(x => TiposEntidadEliminable.Todos.Contains(x.TipoEntidad));
     }
 }

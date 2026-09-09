@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.RateLimiting;
+using Nexit.API.Filters;
 using Nexit.API.Middleware;
 using Nexit.Application;
 using Nexit.Infrastructure;
@@ -118,7 +119,9 @@ try
             RateLimitPartition.GetFixedWindowLimiter($"auth-anon:{context.Connection.RemoteIpAddress}",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimiting:AuthAnonPermitLimit", 8), Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
     });
-    builder.Services.AddControllers();
+    // Filtro global: nadie sin perfil de negocio (o con la cuenta desactivada) pasa de acá, salvo
+    // los endpoints marcados con [PermitirSinPerfil] -- ver Filters/PerfilRequeridoFilter.cs.
+    builder.Services.AddControllers(options => options.Filters.Add<PerfilRequeridoFilter>());
     builder.Services.AddSwaggerGen(options =>
     {
         options.SwaggerDoc("v1", new OpenApiInfo { Title = "Nexit API", Version = "v1", Description = "API REST para la gestión operativa de Nexit." });

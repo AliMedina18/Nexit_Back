@@ -1,3 +1,5 @@
+using FluentValidation;
+using FluentValidation.Results;
 using Moq;
 using Nexit.Application.DTOs.Invitaciones;
 using Nexit.Application.UseCases.Invitaciones;
@@ -84,7 +86,7 @@ public class InvitacionesTests
         var uow = new Mock<IUnitOfWork>();
         var dto = new AceptarInvitacionDto { Nombre = "Ana", Apellido = "Pérez" };
 
-        var result = await new AceptarInvitacionUseCase(invitaciones.Object, usuarios.Object, uow.Object)
+        var result = await new AceptarInvitacionUseCase(invitaciones.Object, usuarios.Object, Mock.Of<INotificacionRepository>(), uow.Object)
             .ExecuteAsync(invitacionId, dto, nuevaId, "nueva@agencianextmkt.com");
 
         Assert.Equal("manager", result.Rol);
@@ -104,7 +106,7 @@ public class InvitacionesTests
         var uow = new Mock<IUnitOfWork>();
 
         await Assert.ThrowsAsync<ForbiddenOperationException>(() =>
-            new AceptarInvitacionUseCase(invitaciones.Object, usuarios.Object, uow.Object)
+            new AceptarInvitacionUseCase(invitaciones.Object, usuarios.Object, Mock.Of<INotificacionRepository>(), uow.Object)
                 .ExecuteAsync(invitacionId, new AceptarInvitacionDto { Nombre = "X", Apellido = "Y" }, Guid.NewGuid(), "otro@agencianextmkt.com"));
     }
 
@@ -119,7 +121,7 @@ public class InvitacionesTests
         var uow = new Mock<IUnitOfWork>();
 
         await Assert.ThrowsAsync<BusinessRuleException>(() =>
-            new AceptarInvitacionUseCase(invitaciones.Object, usuarios.Object, uow.Object)
+            new AceptarInvitacionUseCase(invitaciones.Object, usuarios.Object, Mock.Of<INotificacionRepository>(), uow.Object)
                 .ExecuteAsync(invitacionId, new AceptarInvitacionDto { Nombre = "X", Apellido = "Y" }, Guid.NewGuid(), "nueva@agencianextmkt.com"));
     }
 
@@ -136,7 +138,7 @@ public class InvitacionesTests
         var uow = new Mock<IUnitOfWork>();
 
         await Assert.ThrowsAsync<BusinessRuleException>(() =>
-            new AceptarInvitacionUseCase(invitaciones.Object, usuarios.Object, uow.Object)
+            new AceptarInvitacionUseCase(invitaciones.Object, usuarios.Object, Mock.Of<INotificacionRepository>(), uow.Object)
                 .ExecuteAsync(invitacionId, new AceptarInvitacionDto { Nombre = "X", Apellido = "Y" }, yaExisteId, "nueva@agencianextmkt.com"));
     }
 
@@ -149,7 +151,7 @@ public class InvitacionesTests
         invitaciones.Setup(x => x.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>())).ReturnsAsync(invitacion);
         var uow = new Mock<IUnitOfWork>();
 
-        await new RechazarInvitacionUseCase(invitaciones.Object, uow.Object).ExecuteAsync(invitacionId, "nueva@agencianextmkt.com");
+        await new RechazarInvitacionUseCase(invitaciones.Object, Mock.Of<INotificacionRepository>(), uow.Object).ExecuteAsync(invitacionId, "nueva@agencianextmkt.com");
 
         Assert.Equal(EstadosInvitacion.Rechazada, invitacion.Estado);
         Assert.NotNull(invitacion.FechaRespuesta);
@@ -165,7 +167,7 @@ public class InvitacionesTests
         var uow = new Mock<IUnitOfWork>();
 
         await Assert.ThrowsAsync<ForbiddenOperationException>(() =>
-            new RechazarInvitacionUseCase(invitaciones.Object, uow.Object).ExecuteAsync(invitacionId, "otro@agencianextmkt.com"));
+            new RechazarInvitacionUseCase(invitaciones.Object, Mock.Of<INotificacionRepository>(), uow.Object).ExecuteAsync(invitacionId, "otro@agencianextmkt.com"));
     }
 
     [Fact]
@@ -183,4 +185,190 @@ public class InvitacionesTests
         var item = Assert.Single(result);
         Assert.Equal("Alicia Medina", item.InvitadoPorNombre);
     }
+
+    // --- Invitar a varios correos de una sola vez (lote). Lo importante acá no es que "funcione"
+    // sino que NUNCA sea todo-o-nada: un correo malo dentro del lote no puede impedir que los
+    // demás se inviten, porque quien invita escribe varios de corrido y un dedazo en uno solo
+    // haría perder el envío entero.
+
+    private static CrearInvitacionesLoteUseCase LoteConValidador(
+        Mock<ICrearInvitacionUseCase> crear, Mock<IValidator<CrearInvitacionDto>> validador) =>
+        new(crear.Object, validador.Object);
+
+    private static Mock<IValidator<CrearInvitacionDto>> ValidadorQueAcepta(params string[] emailsInvalidos)
+    {
+        var validador = new Mock<IValidator<CrearInvitacionDto>>();
+        validador.Setup(x => x.ValidateAsync(It.IsAny<CrearInvitacionDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CrearInvitacionDto dto, CancellationToken _) => emailsInvalidos.Contains(dto.Email)
+                ? new ValidationResult([new ValidationFailure(nameof(dto.Email), "Correo no permitido.")])
+                : new ValidationResult());
+        return validador;
+    }
+
+    private static Mock<ICrearInvitacionUseCase> CrearQueDevuelveLaInvitacion()
+    {
+        var crear = new Mock<ICrearInvitacionUseCase>();
+        crear.Setup(x => x.ExecuteAsync(It.IsAny<CrearInvitacionDto>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CrearInvitacionDto dto, Guid _, CancellationToken _) =>
+                new InvitacionResponseDto { Email = dto.Email, Rol = dto.Rol, Estado = EstadosInvitacion.Pendiente });
+        return crear;
+    }
+
+    [Fact]
+    public async Task CrearInvitacionesLote_invita_a_todos_los_correos_validos()
+    {
+        var crear = CrearQueDevuelveLaInvitacion();
+        var dto = new CrearInvitacionesLoteDto
+        {
+            Emails = ["una@agencianextmkt.com", "otra@agencianextmkt.com"],
+            Rol = "manager",
+            Mensaje = "bienvenidas"
+        };
+
+        var resultado = await LoteConValidador(crear, ValidadorQueAcepta()).ExecuteAsync(dto, AdminId);
+
+        Assert.Equal(2, resultado.Enviadas.Count);
+        Assert.Empty(resultado.Fallidas);
+        Assert.All(resultado.Enviadas, i => Assert.Equal("manager", i.Rol));
+    }
+
+    [Fact]
+    public async Task CrearInvitacionesLote_un_correo_invalido_no_impide_invitar_a_los_demas()
+    {
+        var crear = CrearQueDevuelveLaInvitacion();
+        var dto = new CrearInvitacionesLoteDto
+        {
+            Emails = ["buena@agencianextmkt.com", "mala@otro-dominio.com", "otra@agencianextmkt.com"],
+            Rol = "miembro"
+        };
+
+        var resultado = await LoteConValidador(crear, ValidadorQueAcepta("mala@otro-dominio.com")).ExecuteAsync(dto, AdminId);
+
+        Assert.Equal(2, resultado.Enviadas.Count);
+        var fallida = Assert.Single(resultado.Fallidas);
+        Assert.Equal("mala@otro-dominio.com", fallida.Email);
+        Assert.Contains("no permitido", fallida.Motivo);
+        crear.Verify(x => x.ExecuteAsync(It.Is<CrearInvitacionDto>(d => d.Email == "mala@otro-dominio.com"), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CrearInvitacionesLote_una_falla_de_Supabase_en_un_correo_no_tumba_el_resto()
+    {
+        var crear = CrearQueDevuelveLaInvitacion();
+        crear.Setup(x => x.ExecuteAsync(It.Is<CrearInvitacionDto>(d => d.Email == "repetida@agencianextmkt.com"), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new BusinessRuleException("Ese correo ya tiene una cuenta en Supabase Auth."));
+        var dto = new CrearInvitacionesLoteDto
+        {
+            Emails = ["buena@agencianextmkt.com", "repetida@agencianextmkt.com"],
+            Rol = "miembro"
+        };
+
+        var resultado = await LoteConValidador(crear, ValidadorQueAcepta()).ExecuteAsync(dto, AdminId);
+
+        Assert.Single(resultado.Enviadas);
+        Assert.Equal("buena@agencianextmkt.com", resultado.Enviadas[0].Email);
+        var fallida = Assert.Single(resultado.Fallidas);
+        Assert.Equal("repetida@agencianextmkt.com", fallida.Email);
+        Assert.Contains("ya tiene una cuenta", fallida.Motivo);
+    }
+
+    [Fact]
+    public async Task CrearInvitacionesLote_ignora_repetidos_y_espacios_del_mismo_envio()
+    {
+        var crear = CrearQueDevuelveLaInvitacion();
+        var dto = new CrearInvitacionesLoteDto
+        {
+            Emails = ["  una@agencianextmkt.com ", "UNA@agencianextmkt.com", "", "   "],
+            Rol = "miembro"
+        };
+
+        var resultado = await LoteConValidador(crear, ValidadorQueAcepta()).ExecuteAsync(dto, AdminId);
+
+        Assert.Single(resultado.Enviadas);
+        Assert.Empty(resultado.Fallidas);
+        crear.Verify(x => x.ExecuteAsync(It.IsAny<CrearInvitacionDto>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // --- Cancelar una invitación pendiente (2026-09-08). Distinto de rechazar: lo hace quien
+    // invitó, no la persona invitada.
+
+    [Fact]
+    public async Task CancelarInvitacion_borra_la_pendiente_y_libera_el_correo()
+    {
+        var invitacionId = Guid.NewGuid();
+        var repo = new Mock<IInvitacionEquipoRepository>();
+        repo.Setup(x => x.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InvitacionEquipo { Id = invitacionId, Email = "nueva@agencianextmkt.com", Estado = EstadosInvitacion.Pendiente });
+        var uow = new Mock<IUnitOfWork>();
+
+        await new CancelarInvitacionUseCase(repo.Object, uow.Object).ExecuteAsync(invitacionId);
+
+        repo.Verify(x => x.DeleteAsync(invitacionId, It.IsAny<CancellationToken>()), Times.Once);
+        uow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(EstadosInvitacion.Aceptada)]
+    [InlineData(EstadosInvitacion.Rechazada)]
+    public async Task CancelarInvitacion_rechaza_una_que_ya_se_respondio(string estado)
+    {
+        var invitacionId = Guid.NewGuid();
+        var repo = new Mock<IInvitacionEquipoRepository>();
+        repo.Setup(x => x.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InvitacionEquipo { Id = invitacionId, Email = "nueva@agencianextmkt.com", Estado = estado });
+        var uow = new Mock<IUnitOfWork>();
+
+        await Assert.ThrowsAsync<BusinessRuleException>(() => new CancelarInvitacionUseCase(repo.Object, uow.Object).ExecuteAsync(invitacionId));
+
+        repo.Verify(x => x.DeleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelarInvitacion_falla_si_no_existe()
+    {
+        var repo = new Mock<IInvitacionEquipoRepository>();
+        var uow = new Mock<IUnitOfWork>();
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(() => new CancelarInvitacionUseCase(repo.Object, uow.Object).ExecuteAsync(Guid.NewGuid()));
+    }
+
+    // --- La campanita (2026-09-08). Antes, quien invitaba solo se enteraba de la respuesta si
+    // entraba a Usuarios y notaba que la invitación había desaparecido de la lista de pendientes.
+
+    [Fact]
+    public async Task AceptarInvitacion_le_avisa_a_quien_invito()
+    {
+        var invitacionId = Guid.NewGuid();
+        var usuarioId = Guid.NewGuid();
+        var invitaciones = new Mock<IInvitacionEquipoRepository>();
+        invitaciones.Setup(x => x.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InvitacionEquipo { Id = invitacionId, Email = "nueva@agencianextmkt.com", Rol = "manager", Estado = EstadosInvitacion.Pendiente, InvitadoPorId = AdminId });
+        var usuarios = new Mock<IUsuarioRepository>();
+        var notificaciones = new Mock<INotificacionRepository>();
+
+        await new AceptarInvitacionUseCase(invitaciones.Object, usuarios.Object, notificaciones.Object, Mock.Of<IUnitOfWork>())
+            .ExecuteAsync(invitacionId, new AceptarInvitacionDto { Nombre = "Nueva", Apellido = "Persona" }, usuarioId, "nueva@agencianextmkt.com");
+
+        notificaciones.Verify(x => x.AddAsync(
+            It.Is<Notificacion>(n => n.UsuarioDestinatarioId == AdminId && n.Tipo == "invitacion_aceptada" && n.Mensaje.Contains("nueva@agencianextmkt.com")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RechazarInvitacion_le_avisa_a_quien_invito()
+    {
+        var invitacionId = Guid.NewGuid();
+        var invitaciones = new Mock<IInvitacionEquipoRepository>();
+        invitaciones.Setup(x => x.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InvitacionEquipo { Id = invitacionId, Email = "nueva@agencianextmkt.com", Estado = EstadosInvitacion.Pendiente, InvitadoPorId = AdminId });
+        var notificaciones = new Mock<INotificacionRepository>();
+
+        await new RechazarInvitacionUseCase(invitaciones.Object, notificaciones.Object, Mock.Of<IUnitOfWork>())
+            .ExecuteAsync(invitacionId, "nueva@agencianextmkt.com");
+
+        notificaciones.Verify(x => x.AddAsync(
+            It.Is<Notificacion>(n => n.UsuarioDestinatarioId == AdminId && n.Tipo == "invitacion_rechazada"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
 }
+

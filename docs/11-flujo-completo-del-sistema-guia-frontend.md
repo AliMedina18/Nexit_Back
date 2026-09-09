@@ -118,13 +118,22 @@ Todos los `GET` son para cualquier autenticado (para poblar selects en los formu
 | Ver el directorio completo | `GET /api/usuarios` | `AdminOrAbove` (`admin`/`super_admin`) |
 | Ver mi propio perfil | `GET /api/usuarios/me` | Cualquier autenticado |
 | Ver el perfil de otra persona | `GET /api/usuarios/{id}` | Cualquier autenticado, solo lectura |
-| Crear / editar / eliminar | `POST` / `PUT /api/usuarios/{id}` / `DELETE /api/usuarios/{id}` | `SuperAdminOnly` |
+| Crear / editar | `POST` / `PUT /api/usuarios/{id}` | `SuperAdminOnly` |
+| Eliminar | *(sin endpoint propio)* — `POST /api/solicitudeseliminacion` con `tipoEntidad: "usuario"`, y la ejecuta quien apruebe la solicitud (docs/40) | crear: `AdminOrAbove`; aprobar: `AdminOrAbove` |
+| Exportar el equipo a Excel | `GET /api/usuarios/exportar` | `AdminOrAbove` |
+| Registrar a alguien de una vez (crea su cuenta de Supabase Auth + su perfil) | `POST /api/usuarios/registrar` | `SuperAdminOnly` |
+
+**No hay `POST /api/usuarios/importar`** y no lo va a haber: importar usuarios es invitarlos (`POST /api/invitaciones/importar`, ver la sección de invitaciones), porque un usuario no puede existir sin su cuenta de Supabase Auth -- ver `docs/37`.
 
 Ver `docs/10-correos-autenticacion-y-guia-frontend.md` para el detalle completo de por qué crear un usuario aquí no envía ningún correo (la invitación ya pasó antes, en Supabase). Campos de `POST`: `id` (el UUID que Supabase le asignó a la cuenta al aceptar la invitación — no lo genera este backend), `nombre`, `apellido`, `email` (único, debe ser de un dominio permitido), `rol` (uno de los 4), `iniciales` (opcional, para mostrar un avatar con iniciales en vez de foto), `activo`.
 
 **Actualizado 2026-08-26 — ver ya no es exclusivo de `super_admin`:** `GET /api/usuarios/me` (perfil propio) y `GET /api/usuarios/{id}` (perfil de cualquier otra persona) están abiertos a cualquier autenticado, sin importar el rol — el mismo patrón que el directorio de personas de Microsoft Teams: cualquiera puede mirar el perfil de un compañero (nombre, apellido, rol, iniciales), pero no editarlo ni eliminarlo, eso sigue siendo `SuperAdminOnly`. Además, `admin` (no solo `super_admin`) ahora puede pedir el directorio completo con `GET /api/usuarios`. Antes de este cambio, `UsuariosController` completo era `SuperAdminOnly` y nadie más podía ver ni su propio perfil. Si la cuenta consultada todavía no tiene fila de negocio en `usuarios` (recién invitada, o sembrada a mano), cualquiera de estos `GET` responde `404`.
 
 Protecciones que el frontend debe reflejar en la UI (deshabilitar el botón, no solo esperar el error): nadie puede desactivarse a sí mismo, ni quitarse a sí mismo el rol `super_admin`, ni eliminar su propia cuenta — el backend responde `403` si se intenta.
+
+**Invitar a varios de una vez (agregado 2026-09-08, ver `docs/36`):** además de `POST /api/invitaciones` (un correo), existe `POST /api/invitaciones/lote` (`SuperAdminOnly`) con `{emails: [...], rol, mensaje}`, hasta 25 por envío. Responde `200` aunque algunos fallen: hay que mirar `enviadas` y `fallidas` por separado, no asumir que salió todo.
+
+**Invitaciones, el resto de acciones (2026-09-08, ver `docs/37`):** `POST /api/invitaciones/importar` (`SuperAdminOnly`, multipart) invita a todos los correos de un .xlsx -- columna "Correo" y "Rol" opcional, sin rol entra como `miembro`; devuelve el mismo `ImportarResultadoDto` de los otros importadores, donde `creados` significa "invitaciones enviadas" y `actualizados` siempre viene en 0. `DELETE /api/invitaciones/{id}` (`SuperAdminOnly`) cancela una que siga `Pendiente` y libera ese correo para volver a invitarlo; sobre una ya aceptada o rechazada responde `409`.
 
 ## 9. Solicitudes de eliminación — `/api/solicitudes-eliminacion`
 
@@ -143,6 +152,15 @@ Este es el mecanismo que reemplaza el `DELETE` directo para `manager`/`miembro` 
 **Recordatorio de la sección anterior (doc 10):** nada de este flujo manda correo ni notificación — el gerente/admin tiene que entrar a revisar `pendientes-para-mi` o la lista general para enterarse.
 
 ## 10. Cosas transversales que el frontend necesita saber, no específicas de un módulo
+
+**Tener sesión no alcanza: hace falta perfil (agregado 2026-09-08, ver `docs/36`).** Toda la API
+responde `403` con `codigo: "perfil_requerido"` a una cuenta autenticada en Supabase Auth que
+todavía no tiene fila en `usuarios`, y `403` con `codigo: "cuenta_inactiva"` si la tiene pero está
+desactivada. Las únicas excepciones son las seis acciones del registro: los dos endpoints de
+`/api/auth`, `GET /api/usuarios/me` (responde `404`, así el frontend distingue "sin registrar" de
+"sin permiso") y los tres de la propia invitación (`mia`, `aceptar`, `rechazar`). El frontend tiene
+que mandar a la pantalla de registro con el primer código y cerrar la sesión con el segundo.
+
 
 **Reemplazo completo de colecciones hijas en cada `PUT`.** Aplica a `telefonos` (clientes y proveedores), `servicioIds` (proveedores), `equipo` y `proveedorIds` (proyectos). El formulario de edición debe mandar siempre la lista completa deseada, no un delta — omitir un elemento existente lo borra.
 

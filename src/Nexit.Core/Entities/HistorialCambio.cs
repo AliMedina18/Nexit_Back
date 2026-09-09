@@ -11,12 +11,13 @@ public class HistorialCambio
     public Guid Id { get; set; } = Guid.NewGuid();
     public string TipoEntidad { get; set; } = string.Empty; // "proyecto" | "proveedor" | "cliente"
     public Guid EntidadId { get; set; }
-    public Guid UsuarioId { get; set; }
+    /// <summary>Quién hizo el cambio. Queda en <c>null</c> si esa cuenta se elimina después (ver NexitDbContext) -- la fila del historial no se borra nunca.</summary>
+    public Guid? UsuarioId { get; set; }
     public string Accion { get; set; } = string.Empty; // "creacion" | "edicion" | "eliminacion"
     public string? Campo { get; set; } // null cuando Accion es "creacion" o "eliminacion" (aplica a todo el registro, no a un campo)
     public string? ValorAnterior { get; set; }
     public string? ValorNuevo { get; set; }
     public DateTime Fecha { get; set; } = DateTime.UtcNow;
 
-    public Usuario Usuario { get; set; } = null!;
+    public Usuario? Usuario { get; set; }
 }

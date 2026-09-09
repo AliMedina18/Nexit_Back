@@ -37,6 +37,8 @@ public static class DependencyInjection
         services.AddScoped<IClientesImportExporter, ClientesImportExporter>();
         services.AddScoped<IProveedoresImportExporter, ProveedoresImportExporter>();
         services.AddScoped<IProyectosImportExporter, ProyectosImportExporter>();
+        services.AddScoped<IUsuariosImportExporter, UsuariosImportExporter>();
+        services.AddScoped<IEmailService, SmtpEmailService>();
         services.AddScoped<ISupabaseAuthAdminService, SupabaseAuthAdminService>();
         services.AddScoped<ISupabaseStorageService, SupabaseStorageService>();
         services.AddHostedService<EliminacionAutomaticaUsuariosInactivosService>();

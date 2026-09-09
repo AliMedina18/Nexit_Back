@@ -1,5 +1,11 @@
 # Correos, autenticación y qué necesita el frontend
 
+> **Actualización 2026-09-08 (ver `docs/39`):** este documento decía, con razón, que *este backend
+> nunca envía un correo*. Desde hoy hay **una sola excepción**: el aviso de cuenta desactivada /
+> reactivada, que se manda por SMTP con el Gmail que ya existe, porque Supabase Auth solo sabe
+> mandar los correos de su propio flujo de autenticación y una notificación interna no le sirve a
+> alguien que justo perdió el acceso. Todo lo demás que aparece más abajo sigue igual.
+
 Este documento responde una pregunta muy puntual que surgió al empezar a construir las vistas en el repo del frontend (aparte de Nexit_Back): **¿qué hace exactamente el backend con el envío de correos, y qué le falta?** Se escribe ahora (2026-08-21) porque la respuesta corta — "el backend no envía ningún correo, eso lo hace Supabase" — necesita el detalle completo para poder diseñar las pantallas correctas del lado del frontend.
 
 > **Actualización 2026-08-21 (mismo día, sesión de historias de usuario):** la usuaria cambió el diseño de login descrito en la sección 2.2 original. **Ya no es "solo la super administradora tiene contraseña"** — ahora **todos los roles** pasan por código OTP la primera vez y ahí mismo crean su contraseña, para entrar con ella de ahí en adelante. La sección 2.2 y la tabla de la sección 6 ya reflejan el diseño nuevo; ver `docs/12-historias-de-usuario.md` (HU-01) para el flujo completo paso a paso.

@@ -18,7 +18,8 @@ public class CrearInvitacionValidator : AbstractValidator<CrearInvitacionDto>
             .WithMessage("Ya existe un usuario con ese correo -- no hace falta invitarlo.").When(x => !string.IsNullOrWhiteSpace(x.Email));
         RuleFor(x => x.Email).MustAsync(async (email, ct) => !await invitaciones.ExistePendientePorEmailAsync(email, ct))
             .WithMessage("Ya hay una invitación pendiente para ese correo.").When(x => !string.IsNullOrWhiteSpace(x.Email));
-        RuleFor(x => x.Rol).Must(rol => Roles.Todos.Contains(rol)).WithMessage($"El rol debe ser uno de: {string.Join(", ", Roles.Todos)}.");
+        RuleFor(x => x.Rol).Must(rol => Roles.Asignables.Contains(rol))
+            .WithMessage($"El rol debe ser uno de: {string.Join(", ", Roles.Asignables)}. No se puede invitar a nadie como super administrador.");
         RuleFor(x => x.Mensaje).MaximumLength(500);
     }
 }
@@ -29,5 +30,26 @@ public class AceptarInvitacionValidator : AbstractValidator<AceptarInvitacionDto
     {
         RuleFor(x => x.Nombre).NotEmpty().MaximumLength(255);
         RuleFor(x => x.Apellido).NotEmpty().MaximumLength(255);
+    }
+}
+
+/// <summary>
+/// Solo valida la FORMA del lote (que venga al menos un correo y no una lista desmedida). Cada
+/// correo se valida uno por uno con <see cref="CrearInvitacionValidator"/> dentro del caso de uso,
+/// para poder devolver el motivo exacto por correo en vez de un único error para todo el envío.
+/// </summary>
+public class CrearInvitacionesLoteValidator : AbstractValidator<CrearInvitacionesLoteDto>
+{
+    /// <summary>Tope por envío. No es un límite técnico sino de sensatez -- el equipo de Next son decenas de personas, y un lote enorme sería casi siempre un pegado accidental.</summary>
+    public const int MaximoPorLote = 25;
+
+    public CrearInvitacionesLoteValidator()
+    {
+        RuleFor(x => x.Emails).NotEmpty().WithMessage("Escribe al menos un correo para invitar.");
+        RuleFor(x => x.Emails).Must(x => x.Count <= MaximoPorLote)
+            .WithMessage($"Puedes invitar hasta {MaximoPorLote} correos por envío.");
+        RuleFor(x => x.Rol).Must(rol => Roles.Asignables.Contains(rol))
+            .WithMessage($"El rol debe ser uno de: {string.Join(", ", Roles.Asignables)}. No se puede invitar a nadie como super administrador.");
+        RuleFor(x => x.Mensaje).MaximumLength(500);
     }
 }

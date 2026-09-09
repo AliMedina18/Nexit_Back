@@ -229,7 +229,7 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
         {
             entity.ToTable("solicitudes_eliminacion", t =>
             {
-                t.HasCheckConstraint("ck_solicitudes_eliminacion_tipo", "tipo_entidad IN ('cliente', 'proveedor', 'proyecto')");
+                t.HasCheckConstraint("ck_solicitudes_eliminacion_tipo", "tipo_entidad IN ('cliente', 'proveedor', 'proyecto', 'usuario')");
                 t.HasCheckConstraint("ck_solicitudes_eliminacion_estado", "estado IN ('pendiente_gerente', 'pendiente_admin', 'aprobada', 'rechazada')");
             });
             entity.HasKey(x => x.Id);
@@ -240,15 +240,22 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.Ignore(x => x.UpdatedAt); entity.Ignore(x => x.CreatedBy); entity.Ignore(x => x.UpdatedBy);
             entity.HasIndex(x => new { x.TipoEntidad, x.EntidadId });
             entity.HasIndex(x => x.Estado);
-            entity.HasOne(x => x.SolicitadoPor).WithMany().HasForeignKey(x => x.SolicitadoPorId).OnDelete(DeleteBehavior.Restrict);
+            // SetNull, no Restrict (2026-09-08): con Restrict, eliminar a alguien que alguna vez pidió una
+            // eliminación fallaba con violación de llave foránea -- y eso rompía tanto el borrado manual
+            // como la limpieza automática de los 30 días. La solicitud sobrevive sin dueño; quién la pidió
+            // queda en el respaldo de `usuarios_eliminados`.
+            entity.HasOne(x => x.SolicitadoPor).WithMany().HasForeignKey(x => x.SolicitadoPorId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.GerenteResponsable).WithMany().HasForeignKey(x => x.GerenteResponsableId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.AprobadoPorGerente).WithMany().HasForeignKey(x => x.AprobadoPorGerenteId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.RevisadoPor).WithMany().HasForeignKey(x => x.RevisadoPorId).OnDelete(DeleteBehavior.SetNull);
         });
         modelBuilder.Entity<Notificacion>(entity =>
         {
+            // Los dos tipos de invitación se agregaron el 2026-09-08 (NotificacionFactory.InvitacionRespondida).
+            // Sin ampliar este CHECK, aceptar o rechazar una invitación reventaba con violación de
+            // restricción al guardar la notificación -- ver docs/schema/25_gestion_usuarios_al_dia.sql.
             entity.ToTable("notificaciones", t => t.HasCheckConstraint("ck_notificaciones_tipo",
-                "tipo IN ('solicitud_eliminacion_creada', 'solicitud_eliminacion_endosada', 'solicitud_eliminacion_decidida')"));
+                "tipo IN ('solicitud_eliminacion_creada', 'solicitud_eliminacion_endosada', 'solicitud_eliminacion_decidida', 'invitacion_aceptada', 'invitacion_rechazada')"));
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
             entity.Property(x => x.Tipo).HasMaxLength(50).IsRequired();
@@ -268,7 +275,10 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.Property(x => x.Campo).HasMaxLength(100);
             entity.Property(x => x.Fecha).HasDefaultValueSql("now()");
             entity.HasIndex(x => new { x.TipoEntidad, x.EntidadId, x.Fecha });
-            entity.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+            // SetNull, no Restrict (2026-09-08): el historial NUNCA se borra, pero tampoco puede impedir que
+            // se elimine una cuenta -- si no, cualquiera que haya editado algo alguna vez sería ineliminable.
+            // La fila queda con usuario_id NULL y el frontend la muestra como "Usuario eliminado".
+            entity.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.SetNull);
         });
         modelBuilder.Entity<ProveedorColaborador>(entity =>
         {
@@ -288,7 +298,9 @@ public class NexitDbContext(DbContextOptions<NexitDbContext> options) : DbContex
             entity.Property(x => x.Mensaje).HasMaxLength(500);
             entity.Property(x => x.Estado).HasMaxLength(20).IsRequired();
             entity.HasIndex(x => new { x.Email, x.Estado });
-            entity.HasOne(x => x.InvitadoPor).WithMany().HasForeignKey(x => x.InvitadoPorId).OnDelete(DeleteBehavior.Restrict);
+            // SetNull, no Restrict (2026-09-08): mismo motivo que en historial_cambios y solicitudes_eliminacion
+            // -- quien invitó puede irse del equipo, y sus invitaciones no deben bloquear su eliminación.
+            entity.HasOne(x => x.InvitadoPor).WithMany().HasForeignKey(x => x.InvitadoPorId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

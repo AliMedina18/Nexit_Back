@@ -3,13 +3,23 @@ using Nexit.Application.DTOs.Usuarios;
 namespace Nexit.Application.UseCases.Usuarios;
 
 public interface ICrearUsuarioUseCase { Task<UsuarioResponseDto> ExecuteAsync(CreateUsuarioDto input, CancellationToken cancellationToken = default); }
+/// <summary>
+/// Crea la cuenta de acceso en Supabase Auth Y el perfil de negocio, en un solo paso -- ver
+/// <see cref="Nexit.Core.Interfaces.ISupabaseAuthAdminService.CrearCuentaAsync"/>. La persona entra
+/// la primera vez con el código de un solo uso del login y ahí crea su contraseña, igual que quien
+/// llega por invitación.
+/// </summary>
+public interface IRegistrarUsuarioUseCase { Task<UsuarioResponseDto> ExecuteAsync(RegistrarUsuarioDto input, Guid callerId, CancellationToken cancellationToken = default); }
+
 public interface IActualizarUsuarioUseCase { Task<UsuarioResponseDto> ExecuteAsync(Guid id, UpdateUsuarioDto input, Guid callerId, CancellationToken cancellationToken = default); }
 public interface IConsultarUsuariosUseCase
 {
     Task<IReadOnlyList<UsuarioResponseDto>> ListAsync(CancellationToken cancellationToken = default);
     Task<UsuarioResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 }
-public interface IEliminarUsuarioUseCase { Task ExecuteAsync(Guid id, Guid callerId, CancellationToken cancellationToken = default); }
+// IEliminarUsuarioUseCase se eliminó el 2026-09-08 (docs/40): ya no hay borrado directo de personas.
+// Lo hace AprobarComoAdminUseCase al aprobar una solicitud de tipo "usuario", y el proceso automático
+// de los 30 días vía IEliminarUsuariosInactivosUseCase.
 
 /// <summary>
 /// Barrido automático (ver docs/17-eliminacion-automatica-usuarios.md): elimina a quien lleva 30

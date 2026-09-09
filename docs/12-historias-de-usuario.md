@@ -190,7 +190,7 @@ Ver `docs/17-eliminacion-automatica-usuarios.md` para el diseño completo y la i
 2. Desde ese momento, la cuenta pierde acceso al sistema (el Auth Hook deja de darle un rol válido en su próximo inicio de sesión o renovación de token — hasta 1 hora de margen en el peor caso, ver `docs/17` sección 6) — no solo queda "desactivada en el papel", de verdad no puede usar el sistema.
 3. Si en cualquier momento antes de los 30 días alguien vuelve a poner `Activo = true`, el conteo se cancela por completo (`FechaDesactivacion` se limpia) y la cuenta recupera acceso normal.
 4. Si nadie la reactiva, al cumplirse los 30 días el proceso automático de `Nexit_Back` la elimina sola: guarda una copia completa en `usuarios_eliminados` (tabla de respaldo, no consultada por la aplicación normal) y borra la fila de `usuarios`.
-5. Alternativa al paso 4: el super administrador puede eliminarla de inmediato sin esperar, con `DELETE /api/usuarios/{id}` — mismo respaldo previo, pero queda registrado quién la eliminó (a diferencia de la automática, donde ese campo queda vacío).
+5. Alternativa al paso 4 (cambió el 2026-09-08, ver docs/40): un administrador o el super administrador **pide** la eliminación (`POST /api/solicitudeseliminacion` con `tipoEntidad: "usuario"`), le llega la notificación al resto de administradores y al super administrador, y el borrado real ocurre cuando alguien aprueba esa solicitud — mismo respaldo previo, y queda registrado quién la aprobó (a diferencia de la automática, donde ese campo queda vacío).
 
 ### Flujo alterno — la propia cuenta
 - Nadie puede desactivarse, quitarse el rol de super_admin, ni eliminarse a sí mismo (protección ya existente, ver `docs/06`) — evita que el sistema se quede sin nadie que lo pueda administrar.
@@ -357,9 +357,13 @@ Ver `docs/25-invitar-y-registrar-en-un-solo-paso.md` para el diseño completo (e
 - Usa las mismas claves de configuración que `docs/17` (`Supabase:ProjectUrl`, `Supabase:ServiceRoleKey`) — si ya las configuraste para la eliminación automática de cuentas, esto funciona sin nada adicional.
 - Esta es también la vía para dar de alta la cuenta de `analistacompras@agencianextmkt.com` que quedó mencionada como pendiente en la nota de abajo, cuando quieras invitarla.
 
-### Estado del backend para esta historia: ✅ Completo, 🟡 para probarla de verdad
+### Estado del backend para esta historia: ✅ Completo
 
 El código está completo y probado. Falta el mismo paso externo que `docs/17` — que configures `Supabase:ProjectUrl`/`Supabase:ServiceRoleKey` en `appsettings.Production.json` — para poder invitar a alguien de verdad y ver el correo llegar.
+
+### Estado del frontend: ✅ Completo desde 2026-09-08 (antes era el hueco real de esta historia)
+
+Hasta el 2026-09-08 el frontend solo tenía construida la primera mitad (invitar). Los endpoints de la segunda mitad — ver la propia invitación, aceptarla o rechazarla — existían en `invitaciones-service.ts` de `Nexit_Front` y **no los llamaba ninguna pantalla**, así que quien era invitado entraba al dashboard sin perfil y sin forma de crearse uno. Peor: podía usar el sistema igual, porque el Auth Hook le da el rol `miembro` por defecto mientras no tenga fila en `usuarios`. Se construyó la pantalla `/registro` (obligatoria: sin perfil no se pinta el dashboard) y el candado de verdad en el backend (`PerfilRequeridoFilter`), y se agregó invitar a varios correos de una vez. Ver `docs/36-registro-obligatorio-y-invitacion-por-lote.md`.
 
 226 pruebas en total (219 pasan, 7 dependen de Docker en este entorno — nada nuevo), 11 nuevas para esta historia, cero regresiones.
 

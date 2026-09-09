@@ -43,9 +43,9 @@ public static class DependencyInjection
         services.AddScoped<IConsultarInformesUseCase, ConsultarInformesUseCase>();
         services.AddScoped<IGenerarInformeSnapshotUseCase, GenerarInformeSnapshotUseCase>();
         services.AddScoped<ICrearUsuarioUseCase, CrearUsuarioUseCase>();
+        services.AddScoped<IRegistrarUsuarioUseCase, RegistrarUsuarioUseCase>();
         services.AddScoped<IActualizarUsuarioUseCase, ActualizarUsuarioUseCase>();
         services.AddScoped<IConsultarUsuariosUseCase, ConsultarUsuariosUseCase>();
-        services.AddScoped<IEliminarUsuarioUseCase, EliminarUsuarioUseCase>();
         services.AddScoped<IEliminarUsuariosInactivosUseCase, EliminarUsuariosInactivosUseCase>();
         services.AddScoped<ISolicitarEliminacionUseCase, SolicitarEliminacionUseCase>();
         services.AddScoped<IAprobarComoGerenteUseCase, AprobarComoGerenteUseCase>();
@@ -60,10 +60,12 @@ public static class DependencyInjection
         services.AddScoped<IQuitarColaboradorProveedorUseCase, QuitarColaboradorProveedorUseCase>();
         services.AddScoped<IListarMisProveedoresUseCase, ListarMisProveedoresUseCase>();
         services.AddScoped<ICrearInvitacionUseCase, CrearInvitacionUseCase>();
+        services.AddScoped<ICrearInvitacionesLoteUseCase, CrearInvitacionesLoteUseCase>();
         services.AddScoped<IConsultarInvitacionesUseCase, ConsultarInvitacionesUseCase>();
         services.AddScoped<IConsultarMiInvitacionUseCase, ConsultarMiInvitacionUseCase>();
         services.AddScoped<IAceptarInvitacionUseCase, AceptarInvitacionUseCase>();
         services.AddScoped<IRechazarInvitacionUseCase, RechazarInvitacionUseCase>();
+        services.AddScoped<ICancelarInvitacionUseCase, CancelarInvitacionUseCase>();
         services.AddScoped<IRegistrarPresenciaUseCase, RegistrarPresenciaUseCase>();
         services.AddScoped<IConsultarPresenciaUseCase, ConsultarPresenciaUseCase>();
         services.AddScoped<IConsultarEstadoCuentaUseCase, ConsultarEstadoCuentaUseCase>();

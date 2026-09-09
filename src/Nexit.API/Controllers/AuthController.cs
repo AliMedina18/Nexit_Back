@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Nexit.API.Filters;
 using Nexit.Application.DTOs.Auth;
 using Nexit.Application.UseCases.Auth;
 
@@ -19,6 +20,7 @@ namespace Nexit.API.Controllers;
 /// confirma/descarta correos es, por naturaleza, un vector de enumeración de cuentas, y el límite
 /// por defecto (100/min, pensado para gente ya autenticada) sería demasiado permisivo para eso.
 /// </summary>
+[PermitirSinPerfil]
 public class AuthController(
     IConsultarEstadoCuentaUseCase consultarEstadoCuenta,
     IConfirmarContrasenaConfiguradaUseCase confirmarContrasenaConfigurada) : BaseController

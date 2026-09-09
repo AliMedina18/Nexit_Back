@@ -15,6 +15,9 @@ public class UsuarioRepository(NexitDbContext context) : Repository<Usuario>(con
     public override async Task<IReadOnlyList<Usuario>> GetAllAsync(CancellationToken cancellationToken = default) =>
         await DbSet.AsNoTracking().OrderBy(x => x.Nombre).ToListAsync(cancellationToken);
 
+    public async Task<bool?> EstaActivoAsync(Guid id, CancellationToken cancellationToken = default) =>
+        await DbSet.AsNoTracking().Where(x => x.Id == id).Select(x => (bool?)x.Activo).FirstOrDefaultAsync(cancellationToken);
+
     public async Task<IReadOnlyList<Usuario>> GetInactivosDesdeAsync(DateTime limite, CancellationToken cancellationToken = default) =>
         await DbSet.Where(x => !x.Activo && x.FechaDesactivacion != null && x.FechaDesactivacion <= limite).ToListAsync(cancellationToken);
 }

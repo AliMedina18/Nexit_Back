@@ -17,6 +17,21 @@ public class CreateUsuarioDto
     public bool Activo { get; set; } = true;
 }
 
+/// <summary>
+/// Dar de alta a alguien SIN pasar por el correo de invitación (2026-09-08). A diferencia de
+/// <see cref="CreateUsuarioDto"/>, acá no se manda ningún Id: el backend crea la cuenta en Supabase
+/// Auth y usa el UUID que Supabase le asigne. Es el camino para cuando quien administra prefiere
+/// dejar todo listo de una vez en vez de esperar a que la persona abra un correo y responda.
+/// </summary>
+public class RegistrarUsuarioDto
+{
+    public string Nombre { get; set; } = string.Empty;
+    public string Apellido { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Rol { get; set; } = "miembro";
+    public string? Iniciales { get; set; }
+}
+
 public class UpdateUsuarioDto
 {
     public string Nombre { get; set; } = string.Empty;

@@ -2,6 +2,7 @@ using Nexit.Application.DTOs.Clientes;
 using Nexit.Application.DTOs.Importacion;
 using Nexit.Application.DTOs.Proveedores;
 using Nexit.Application.DTOs.Proyectos;
+using Nexit.Application.DTOs.Usuarios;
 
 namespace Nexit.Application.Services;
 
@@ -57,4 +58,28 @@ public interface IProyectosImportExporter
     /// a quien importó (mismo comportamiento que crear un proyecto uno por uno desde el formulario).
     /// </summary>
     Task<ImportarResultadoDto> ImportarAsync(Stream archivo, Guid usuarioId, string? usuarioRol, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// El equipo como Excel (2026-09-08, pedido de Alicia: "al lado de la campanita te falta importar y
+/// exportar datos"). Es el único de los cuatro que NO es simétrico, y a propósito:
+///
+///  - <b>Exportar</b> da la foto del equipo -- quién tiene acceso, con qué rol y en qué estado.
+///  - <b>Importar</b> NO crea usuarios: los <i>invita</i>. Un usuario de Nexit no puede existir sin
+///    su cuenta en Supabase Auth, y esa cuenta la crea Supabase cuando la persona acepta el correo
+///    de invitación (docs/25) -- no hay forma de fabricar una desde una fila de Excel como sí se
+///    hace con un cliente. Así que el archivo que se sube es una lista de correos con su rol, y cada
+///    fila dispara exactamente la misma invitación que el modal de "Invitar": misma validación de
+///    dominio, mismos duplicados detectados, mismo correo real enviado por Supabase.
+///
+/// Por eso <c>ImportarResultadoDto.Creados</c> acá significa "invitaciones enviadas" y
+/// <c>Actualizados</c> siempre queda en cero -- reinvitar a alguien no actualiza nada, o ya existe
+/// (y queda reportado como error de esa fila) o no existía y se invita.
+/// </summary>
+public interface IUsuariosImportExporter
+{
+    byte[] Exportar(IReadOnlyList<UsuarioResponseDto> usuarios);
+
+    /// <summary><paramref name="usuarioId"/> es quien invita -- queda registrado como <c>InvitadoPorId</c> de cada invitación creada.</summary>
+    Task<ImportarResultadoDto> ImportarInvitacionesAsync(Stream archivo, Guid usuarioId, CancellationToken cancellationToken = default);
 }

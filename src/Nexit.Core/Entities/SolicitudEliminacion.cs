@@ -10,9 +10,10 @@ namespace Nexit.Core.Entities;
 /// </summary>
 public class SolicitudEliminacion : BaseEntity
 {
-    public string TipoEntidad { get; set; } = string.Empty; // "cliente" | "proveedor" | "proyecto"
+    public string TipoEntidad { get; set; } = string.Empty; // "cliente" | "proveedor" | "proyecto" | "usuario"
     public Guid EntidadId { get; set; }
-    public Guid SolicitadoPorId { get; set; }
+    /// <summary>Queda en <c>null</c> si esa cuenta se elimina después (ver NexitDbContext) -- la solicitud se conserva.</summary>
+    public Guid? SolicitadoPorId { get; set; }
     public string? Motivo { get; set; }
     public string Estado { get; set; } = "pendiente_admin"; // "pendiente_gerente" | "pendiente_admin" | "aprobada" | "rechazada"
     public Guid? GerenteResponsableId { get; set; }
@@ -22,7 +23,7 @@ public class SolicitudEliminacion : BaseEntity
     public DateTime? RevisadoEn { get; set; }
     public string? ComentarioRevision { get; set; }
 
-    public Usuario SolicitadoPor { get; set; } = null!;
+    public Usuario? SolicitadoPor { get; set; }
     public Usuario? GerenteResponsable { get; set; }
     public Usuario? AprobadoPorGerente { get; set; }
     public Usuario? RevisadoPor { get; set; }

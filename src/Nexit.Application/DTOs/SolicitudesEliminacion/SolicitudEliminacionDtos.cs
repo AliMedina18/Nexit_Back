@@ -2,7 +2,7 @@ namespace Nexit.Application.DTOs.SolicitudesEliminacion;
 
 public class CrearSolicitudEliminacionDto
 {
-    public string TipoEntidad { get; set; } = string.Empty; // "cliente" | "proveedor" | "proyecto"
+    public string TipoEntidad { get; set; } = string.Empty; // "cliente" | "proveedor" | "proyecto" | "usuario"
     public Guid EntidadId { get; set; }
     public string? Motivo { get; set; }
 }
@@ -17,7 +17,7 @@ public class SolicitudEliminacionResponseDto
     public Guid Id { get; set; }
     public string TipoEntidad { get; set; } = string.Empty;
     public Guid EntidadId { get; set; }
-    public Guid SolicitadoPorId { get; set; }
+    public Guid? SolicitadoPorId { get; set; }
     public string? Motivo { get; set; }
     public string Estado { get; set; } = string.Empty;
     public Guid? GerenteResponsableId { get; set; }

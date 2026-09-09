@@ -18,7 +18,33 @@ public class CrearUsuarioUseCase(IUsuarioRepository repository, IUnitOfWork unit
     }
 }
 
-public class ActualizarUsuarioUseCase(IUsuarioRepository repository, IUnitOfWork unitOfWork) : IActualizarUsuarioUseCase
+/// <summary>Ver IRegistrarUsuarioUseCase.</summary>
+public class RegistrarUsuarioUseCase(IUsuarioRepository repository, ISupabaseAuthAdminService authAdmin, IUnitOfWork unitOfWork) : IRegistrarUsuarioUseCase
+{
+    public async Task<UsuarioResponseDto> ExecuteAsync(RegistrarUsuarioDto input, Guid callerId, CancellationToken cancellationToken = default)
+    {
+        // Primero la cuenta de acceso, después el perfil -- mismo criterio que CrearInvitacionUseCase:
+        // si Supabase falla, no queda un perfil de negocio sin ninguna forma de iniciar sesión.
+        var usuarioId = await authAdmin.CrearCuentaAsync(input.Email, cancellationToken);
+
+        var usuario = new Usuario
+        {
+            Id = usuarioId,
+            Nombre = input.Nombre,
+            Apellido = input.Apellido,
+            Email = input.Email,
+            Rol = input.Rol,
+            Iniciales = input.Iniciales,
+            Activo = true,
+            CreatedBy = callerId,
+        };
+        await repository.AddAsync(usuario, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return UsuarioMapper.ToResponse(usuario);
+    }
+}
+
+public class ActualizarUsuarioUseCase(IUsuarioRepository repository, IEmailService email, IConfiguration configuration, IUnitOfWork unitOfWork) : IActualizarUsuarioUseCase
 {
     public async Task<UsuarioResponseDto> ExecuteAsync(Guid id, UpdateUsuarioDto input, Guid callerId, CancellationToken cancellationToken = default)
     {
@@ -31,15 +57,47 @@ public class ActualizarUsuarioUseCase(IUsuarioRepository repository, IUnitOfWork
             if (!input.Activo) throw new ForbiddenOperationException("No puedes desactivar tu propia cuenta.");
             if (input.Rol != Roles.SuperAdmin) throw new ForbiddenOperationException("No puedes quitarte a ti mismo el rol de super administrador.");
         }
+        // Nadie más puede quedar como super administrador (2026-09-08, ver Roles.Asignables): hay un
+        // solo dueño del sistema, y ascender a alguien a ese rol desde un formulario sería la forma
+        // más fácil de perder ese control sin darse cuenta.
+        else if (input.Rol == Roles.SuperAdmin)
+        {
+            throw new ForbiddenOperationException("No puedes darle a nadie el rol de super administrador.");
+        }
         // Arranca/limpia el conteo de 30 días para la eliminación automática (docs/17) justo cuando
         // Activo cambia de verdad -- no en cada edición, para no reiniciar el plazo al corregir, por
         // ejemplo, solo el nombre de alguien que ya estaba desactivado.
-        if (usuario.Activo && !input.Activo) usuario.FechaDesactivacion = DateTime.UtcNow;
-        else if (!usuario.Activo && input.Activo) usuario.FechaDesactivacion = null;
+        var seDesactiva = usuario.Activo && !input.Activo;
+        var seReactiva = !usuario.Activo && input.Activo;
+        if (seDesactiva) usuario.FechaDesactivacion = DateTime.UtcNow;
+        else if (seReactiva) usuario.FechaDesactivacion = null;
         usuario.Nombre = input.Nombre; usuario.Apellido = input.Apellido; usuario.Rol = input.Rol; usuario.Iniciales = input.Iniciales; usuario.Activo = input.Activo;
         usuario.UpdatedAt = DateTime.UtcNow;
         repository.Update(usuario);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Después de guardar, nunca antes: el aviso es una consecuencia del cambio, no un requisito
+        // para hacerlo. IEmailService no lanza (ver su contrato), así que esto no puede deshacer lo
+        // que ya quedó grabado. Una notificación dentro del sistema no serviría para el caso de
+        // desactivar: esa persona justamente ya no puede entrar a verla.
+        if (seDesactiva)
+        {
+            var dias = configuration.GetValue("EliminacionAutomatica:DiasInactividad", 30);
+            await email.EnviarAsync(
+                usuario.Email,
+                "Tu acceso a Nexit quedó suspendido",
+                PlantillasCorreoUsuario.CuentaDesactivada(usuario.Nombre, usuario.FechaDesactivacion!.Value.AddDays(dias), dias),
+                cancellationToken);
+        }
+        else if (seReactiva)
+        {
+            await email.EnviarAsync(
+                usuario.Email,
+                "Tu acceso a Nexit volvió",
+                PlantillasCorreoUsuario.CuentaReactivada(usuario.Nombre),
+                cancellationToken);
+        }
+
         return UsuarioMapper.ToResponse(usuario);
     }
 }
@@ -50,29 +108,10 @@ public class ConsultarUsuariosUseCase(IUsuarioRepository repository) : IConsulta
     public async Task<UsuarioResponseDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => UsuarioMapper.ToResponse(await repository.GetByIdAsync(id, cancellationToken) ?? throw new EntityNotFoundException("Usuario", id));
 }
 
-/// <summary>
-/// Eliminación manual e inmediata, exclusiva del super_admin (DELETE /api/usuarios/{id}) -- un
-/// atajo para cuando no se quiere esperar los 30 días de la eliminación automática (ver
-/// EliminarUsuariosInactivosUseCase). Igual que esa, deja respaldo en `usuarios_eliminados` antes
-/// de borrar, y también intenta eliminar la cuenta de Supabase Auth -- ver docs/17.
-/// </summary>
-public class EliminarUsuarioUseCase(
-    IUsuarioRepository repository,
-    IUsuarioEliminadoRepository archivoRepository,
-    ISupabaseAuthAdminService authAdmin,
-    IUnitOfWork unitOfWork) : IEliminarUsuarioUseCase
-{
-    public async Task ExecuteAsync(Guid id, Guid callerId, CancellationToken cancellationToken = default)
-    {
-        if (id == callerId) throw new ForbiddenOperationException("No puedes eliminar tu propia cuenta.");
-        var usuario = await repository.GetByIdAsync(id, cancellationToken) ?? throw new EntityNotFoundException("Usuario", id);
-
-        await archivoRepository.AddAsync(UsuarioMapper.ToArchivo(usuario, eliminadoPorId: callerId), cancellationToken);
-        await repository.DeleteAsync(id, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        await authAdmin.EliminarCuentaAsync(id, cancellationToken);
-    }
-}
+// El antiguo EliminarUsuarioUseCase (borrado inmediato por el super_admin) desapareció el
+// 2026-09-08 -- ver docs/40-eliminar-usuarios-por-solicitud.md. Quedan dos caminos, y ninguno es un
+// botón que borre en el acto: aprobar una solicitud de eliminación (AprobarComoAdminUseCase) o la
+// limpieza automática de abajo.
 
 /// <summary>Ver IEliminarUsuariosInactivosUseCase. Lo dispara el background service, no un endpoint.</summary>
 public class EliminarUsuariosInactivosUseCase(

@@ -22,7 +22,8 @@ public class InvitacionEquipo : BaseEntity
     /// <summary>"Pendiente" / "Aceptada" / "Rechazada" -- ver <c>Nexit.Core.Constants.EstadosInvitacion</c>.</summary>
     public string Estado { get; set; } = "Pendiente";
 
-    public Guid InvitadoPorId { get; set; }
+    /// <summary>Queda en <c>null</c> si esa cuenta se elimina después (ver NexitDbContext) -- la invitación se conserva.</summary>
+    public Guid? InvitadoPorId { get; set; }
     public Usuario? InvitadoPor { get; set; }
 
     /// <summary>Cuándo se aceptó o rechazó -- null mientras sigue Pendiente.</summary>

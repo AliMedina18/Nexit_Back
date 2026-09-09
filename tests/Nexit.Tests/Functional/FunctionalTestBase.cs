@@ -45,4 +45,28 @@ public abstract class FunctionalTestBase(NexitFunctionalApiFactory factory)
         await db.SaveChangesAsync();
         return usuario.Id;
     }
+
+    /// <summary>
+    /// Siembra un Usuario real DESACTIVADO -- para probar que una cuenta dada de baja pierde el
+    /// acceso de inmediato aunque su token siga diciendo que está activa (ver
+    /// PerfilRequeridoFunctionalTests y el criterio de aceptación de HU-06).
+    /// </summary>
+    protected async Task<Guid> CrearUsuarioDesactivadoAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexitDbContext>();
+        var usuario = new Usuario
+        {
+            Nombre = "Cuenta",
+            Apellido = "Desactivada",
+            Email = $"{Guid.NewGuid():N}@nexit-test.com",
+            Rol = "miembro",
+            Activo = false,
+            FechaDesactivacion = DateTime.UtcNow
+        };
+        db.Usuarios.Add(usuario);
+        await db.SaveChangesAsync();
+        return usuario.Id;
+    }
 }
+

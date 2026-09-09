@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Nexit.Core.Exceptions;
@@ -83,5 +84,49 @@ public class SupabaseAuthAdminService(IConfiguration configuration, ILogger<Supa
                 throw new BusinessRuleException("Ese correo ya tiene una cuenta en Supabase Auth. Si ya es parte del equipo, créale el perfil directamente en vez de invitarlo de nuevo.");
             throw new BusinessRuleException("Supabase no pudo enviar la invitación. Intenta de nuevo o revisa el log del backend.");
         }
+    }
+
+    public async Task<Guid> CrearCuentaAsync(string email, CancellationToken cancellationToken = default)
+    {
+        var projectUrl = configuration["Supabase:ProjectUrl"];
+        var serviceRoleKey = configuration["Supabase:ServiceRoleKey"];
+        if (string.IsNullOrWhiteSpace(projectUrl) || string.IsNullOrWhiteSpace(serviceRoleKey))
+            throw new BusinessRuleException("No se pudo crear la cuenta: falta configurar Supabase:ProjectUrl y Supabase:ServiceRoleKey en el backend (las mismas claves que usa invitar, ver docs/17).");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{projectUrl.TrimEnd('/')}/auth/v1/admin/users");
+        request.Headers.Add("apikey", serviceRoleKey);
+        request.Headers.Add("Authorization", $"Bearer {serviceRoleKey}");
+        // Sin contraseña (ver ISupabaseAuthAdminService) y con el correo ya dado por bueno: la
+        // persona no tiene que confirmar nada, entra directo con el código de un solo uso.
+        request.Content = JsonContent.Create(new { email, email_confirm = true });
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await Http.SendAsync(request, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error de red al crear la cuenta de {Email} en Supabase Auth.", email);
+            throw new BusinessRuleException("No se pudo contactar a Supabase para crear la cuenta. Intenta de nuevo en un momento.");
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogError("Supabase Auth respondió {StatusCode} al crear la cuenta de {Email}: {Body}", response.StatusCode, email, body);
+            if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
+                throw new BusinessRuleException("Ese correo ya tiene una cuenta en Supabase Auth. Si ya es parte del equipo, búscalo en la lista en vez de registrarlo otra vez.");
+            throw new BusinessRuleException("Supabase no pudo crear la cuenta. Intenta de nuevo o revisa el log del backend.");
+        }
+
+        // La respuesta trae el usuario recién creado; su "id" es el UUID que necesita usuarios.id.
+        using var documento = JsonDocument.Parse(body);
+        if (!documento.RootElement.TryGetProperty("id", out var id) || !Guid.TryParse(id.GetString(), out var usuarioId))
+        {
+            logger.LogError("Supabase Auth creó la cuenta de {Email} pero la respuesta no traía un id utilizable: {Body}", email, body);
+            throw new BusinessRuleException("Supabase creó la cuenta pero no devolvió su identificador. Revisa el log del backend antes de reintentar, para no crear una cuenta duplicada.");
+        }
+        return usuarioId;
     }
 }

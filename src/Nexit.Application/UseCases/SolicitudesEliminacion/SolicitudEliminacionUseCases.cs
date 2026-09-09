@@ -1,5 +1,6 @@
 using Nexit.Application.DTOs.SolicitudesEliminacion;
 using Nexit.Application.UseCases.Notificaciones;
+using Nexit.Application.UseCases.Usuarios;
 using Nexit.Core.Constants;
 using Nexit.Core.Entities;
 using Nexit.Core.Exceptions;
@@ -13,9 +14,29 @@ public class SolicitarEliminacionUseCase(
 {
     public async Task<SolicitudEliminacionResponseDto> ExecuteAsync(CrearSolicitudEliminacionDto input, Guid solicitanteId, CancellationToken cancellationToken = default)
     {
+        // Pedir eliminar a una PERSONA no es lo mismo que pedir eliminar un registro (docs/40): solo
+        // admin/super_admin llegan siquiera a la pantalla donde se pide, nadie puede pedir su propia
+        // eliminación (sería una forma rara de darse de baja saltándose la desactivación), y la cuenta
+        // del super_admin no se puede pedir en absoluto -- si el sistema se quedara sin ella, no habría
+        // quien vuelva a dar de alta a nadie.
+        Usuario? usuarioObjetivo = null;
+        if (input.TipoEntidad == TiposEntidadEliminable.Usuario)
+        {
+            var solicitante = await usuarios.GetByIdAsync(solicitanteId, cancellationToken)
+                ?? throw new EntityNotFoundException("Usuario", solicitanteId);
+            if (solicitante.Rol != Roles.Admin && solicitante.Rol != Roles.SuperAdmin)
+                throw new ForbiddenOperationException("Solo un administrador puede pedir que se elimine una cuenta.");
+            if (input.EntidadId == solicitanteId)
+                throw new ForbiddenOperationException("No puedes pedir que eliminen tu propia cuenta.");
+            usuarioObjetivo = await usuarios.GetByIdAsync(input.EntidadId, cancellationToken)
+                ?? throw new EntityNotFoundException("Usuario", input.EntidadId);
+            if (usuarioObjetivo.Rol == Roles.SuperAdmin)
+                throw new ForbiddenOperationException("La cuenta del super administrador no se puede eliminar.");
+        }
+
         Guid? gerenteResponsableId = null;
         var estado = "pendiente_admin";
-        if (input.TipoEntidad == "proyecto")
+        if (input.TipoEntidad == TiposEntidadEliminable.Proyecto)
         {
             var proyecto = await proyectos.GetByIdAsync(input.EntidadId, cancellationToken) ?? throw new EntityNotFoundException("Proyecto", input.EntidadId);
             // Si el proyecto tiene un gerente responsable distinto de quien solicita, primero debe
@@ -44,7 +65,14 @@ public class SolicitarEliminacionUseCase(
             // administrador vea de una vez cuántas personas la están pidiendo (docs/19) -- +1 porque
             // esta que se acaba de crear también cuenta, y GetOtrasPendientes... la excluye a propósito.
             var totalPendientes = (await solicitudes.GetOtrasPendientesPorEntidadAsync(input.TipoEntidad, input.EntidadId, solicitud.Id, cancellationToken)).Count + 1;
-            foreach (var adminId in await IdsAdministradoresAsync(usuarios, cancellationToken))
+            // Le llega a TODOS los administradores y al super administrador -- son quienes pueden decidir.
+            // Con una cuenta de por medio se salta a dos: a quien la pidió (ya sabe) y a la persona en
+            // cuestión (avisarle "pidieron eliminarte" desde su propia campana sería cruel e inútil: no
+            // puede hacer nada al respecto).
+            var destinatarios = await IdsAdministradoresAsync(usuarios, cancellationToken);
+            if (usuarioObjetivo is not null)
+                destinatarios = destinatarios.Where(id => id != solicitanteId && id != usuarioObjetivo.Id).ToList();
+            foreach (var adminId in destinatarios)
                 await notificaciones.AddAsync(NotificacionFactory.SolicitudCreadaParaAdmin(adminId, solicitud, totalPendientes), cancellationToken);
         }
 
@@ -86,7 +114,8 @@ public class RechazarComoGerenteUseCase(ISolicitudEliminacionRepository solicitu
         solicitud.RevisadoEn = DateTime.UtcNow;
         solicitud.ComentarioRevision = input.Comentario;
         solicitudes.Update(solicitud);
-        await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(solicitud, aprobada: false, input.Comentario), cancellationToken);
+        if (NotificacionFactory.DecisionParaSolicitante(solicitud, aprobada: false, input.Comentario) is { } aviso)
+            await notificaciones.AddAsync(aviso, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return SolicitudEliminacionMapper.ToResponse(solicitud);
     }
@@ -97,6 +126,9 @@ public class AprobarComoAdminUseCase(
     IClienteRepository clientes,
     IProveedorRepository proveedores,
     IProyectoRepository proyectos,
+    IUsuarioRepository usuarios,
+    IUsuarioEliminadoRepository usuariosEliminados,
+    ISupabaseAuthAdminService authAdmin,
     INotificacionRepository notificaciones,
     IUnitOfWork unitOfWork) : IAprobarComoAdminUseCase
 {
@@ -106,16 +138,30 @@ public class AprobarComoAdminUseCase(
         if (solicitud.Estado != "pendiente_admin") throw new BusinessRuleException("Esta solicitud no está esperando la aprobación de un administrador.");
         // Si la entidad ya no existe (por ejemplo, alguien más ya la eliminó), simplemente se marca
         // la solicitud como aprobada sin volver a intentar borrarla.
+        Guid? cuentaAuthPorEliminar = null;
         switch (solicitud.TipoEntidad)
         {
-            case "cliente":
+            case TiposEntidadEliminable.Cliente:
                 if (await clientes.GetByIdAsync(solicitud.EntidadId, cancellationToken) is not null) await clientes.DeleteAsync(solicitud.EntidadId, cancellationToken);
                 break;
-            case "proveedor":
+            case TiposEntidadEliminable.Proveedor:
                 if (await proveedores.GetByIdAsync(solicitud.EntidadId, cancellationToken) is not null) await proveedores.DeleteAsync(solicitud.EntidadId, cancellationToken);
                 break;
-            case "proyecto":
+            case TiposEntidadEliminable.Proyecto:
                 if (await proyectos.GetByIdAsync(solicitud.EntidadId, cancellationToken) is not null) await proyectos.DeleteAsync(solicitud.EntidadId, cancellationToken);
+                break;
+            case TiposEntidadEliminable.Usuario:
+                // Mismo procedimiento que la eliminación automática de los 30 días (docs/17): respaldo en
+                // `usuarios_eliminados`, borrado del perfil, y por último la cuenta de Supabase Auth --
+                // esa va DESPUÉS de SaveChangesAsync, porque es lo único de aquí que no se puede deshacer.
+                if (await usuarios.GetByIdAsync(solicitud.EntidadId, cancellationToken) is { } usuario)
+                {
+                    if (usuario.Rol == Roles.SuperAdmin) throw new ForbiddenOperationException("La cuenta del super administrador no se puede eliminar.");
+                    if (usuario.Id == adminId) throw new ForbiddenOperationException("No puedes aprobar la eliminación de tu propia cuenta.");
+                    await usuariosEliminados.AddAsync(UsuarioMapper.ToArchivo(usuario, eliminadoPorId: adminId), cancellationToken);
+                    await usuarios.DeleteAsync(usuario.Id, cancellationToken);
+                    cuentaAuthPorEliminar = usuario.Id;
+                }
                 break;
         }
         solicitud.Estado = "aprobada";
@@ -123,7 +169,8 @@ public class AprobarComoAdminUseCase(
         solicitud.RevisadoEn = DateTime.UtcNow;
         solicitud.ComentarioRevision = input.Comentario;
         solicitudes.Update(solicitud);
-        await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(solicitud, aprobada: true, input.Comentario), cancellationToken);
+        if (NotificacionFactory.DecisionParaSolicitante(solicitud, aprobada: true, input.Comentario) is { } aviso)
+            await notificaciones.AddAsync(aviso, cancellationToken);
 
         // El administrador decide UNA vez por la entidad, no solicitud por solicitud (docs/19): como
         // la entidad ya se eliminó, cualquier otra solicitud todavía abierta para ella (la haya hecho
@@ -133,10 +180,12 @@ public class AprobarComoAdminUseCase(
         {
             otra.Estado = "aprobada"; otra.RevisadoPorId = adminId; otra.RevisadoEn = DateTime.UtcNow; otra.ComentarioRevision = input.Comentario;
             solicitudes.Update(otra);
-            await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(otra, aprobada: true, input.Comentario), cancellationToken);
+            if (NotificacionFactory.DecisionParaSolicitante(otra, aprobada: true, input.Comentario) is { } avisoOtra)
+                await notificaciones.AddAsync(avisoOtra, cancellationToken);
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (cuentaAuthPorEliminar is not null) await authAdmin.EliminarCuentaAsync(cuentaAuthPorEliminar.Value, cancellationToken);
         return SolicitudEliminacionMapper.ToResponse(solicitud);
     }
 }
@@ -152,7 +201,8 @@ public class RechazarComoAdminUseCase(ISolicitudEliminacionRepository solicitude
         solicitud.RevisadoEn = DateTime.UtcNow;
         solicitud.ComentarioRevision = input.Comentario;
         solicitudes.Update(solicitud);
-        await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(solicitud, aprobada: false, input.Comentario), cancellationToken);
+        if (NotificacionFactory.DecisionParaSolicitante(solicitud, aprobada: false, input.Comentario) is { } aviso)
+            await notificaciones.AddAsync(aviso, cancellationToken);
 
         // Misma razón que en AprobarComoAdminUseCase: una sola decisión del administrador resuelve
         // TODAS las solicitudes pendientes de esa misma entidad, no solo la que se revisó primero.
@@ -160,7 +210,8 @@ public class RechazarComoAdminUseCase(ISolicitudEliminacionRepository solicitude
         {
             otra.Estado = "rechazada"; otra.RevisadoPorId = adminId; otra.RevisadoEn = DateTime.UtcNow; otra.ComentarioRevision = input.Comentario;
             solicitudes.Update(otra);
-            await notificaciones.AddAsync(NotificacionFactory.DecisionParaSolicitante(otra, aprobada: false, input.Comentario), cancellationToken);
+            if (NotificacionFactory.DecisionParaSolicitante(otra, aprobada: false, input.Comentario) is { } avisoOtra)
+                await notificaciones.AddAsync(avisoOtra, cancellationToken);
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
